@@ -1,0 +1,2 @@
+-- This file is restored to satisfy migration history. 
+-- The actual logic is updated in 20260210173000_update_sale_payment_method_v2.sql

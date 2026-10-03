@@ -1,0 +1,12 @@
+{
+    "rewrites": [
+        {
+            "source": "/api/fbr/:path*",
+            "destination": "http://146.190.202.112:5060/api/fbr/:path*"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}
