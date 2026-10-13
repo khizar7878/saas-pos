@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenant } from '@/contexts/TenantContext';
 import { useStoreSettings } from '@/hooks/useStoreSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +17,8 @@ const StoreLogo = ({ settings, loading }: { settings: any, loading: boolean }) =
 
   if (loading) {
     return (
-      <div className="h-64 w-full flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="h-20 w-full flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -29,16 +30,16 @@ const StoreLogo = ({ settings, loading }: { settings: any, loading: boolean }) =
       <img
         src={logo}
         alt={settings.store_name}
-        className="h-64 w-auto object-contain"
+        className="h-20 w-auto object-contain max-w-[200px]"
         onError={() => setImageError(true)}
       />
     );
   }
 
-  // Fallback: Default Store Icon
+  // Fallback: Modern SaaS Store Icon Container
   return (
-    <div className="h-64 w-full flex flex-col items-center justify-center gap-4 text-muted-foreground">
-      <Store className="h-24 w-24 opacity-20" />
+    <div className="h-20 w-20 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900 shadow-sm">
+      <Store className="h-10 w-10" />
     </div>
   );
 };
@@ -46,6 +47,7 @@ const StoreLogo = ({ settings, loading }: { settings: any, loading: boolean }) =
 const Auth = () => {
   const navigate = useNavigate();
   const { signIn, user } = useAuth();
+  const { isSuperAdmin } = useTenant();
   const { data: settings, isLoading: settingsLoading } = useStoreSettings();
   const { allowedRoutes, isAdmin, loading: permissionsLoading } = usePermissions();
 
@@ -58,23 +60,26 @@ const Auth = () => {
   // Redirect if already logged in - Check permissions for correct landing page
   useEffect(() => {
     if (user && !permissionsLoading) {
-      let target = '/';
+      // 1. Superadmin lands directly in the Superadmin Hub
+      if (isSuperAdmin || user.email === 'superadmin@saaspos.pk') {
+        navigate('/superadmin');
+        return;
+      }
 
+      // 2. Regular store users land on permitted dashboard/POS
+      let target = '/';
       const routes = allowedRoutes || [];
 
       if (!isAdmin && routes.length > 0) {
-        // Check if user has access to Dashboard
         const hasDashboardAccess = routes.some(r => r.path === '/');
-
         if (!hasDashboardAccess) {
-          // Redirect to first allowed route
           target = routes[0].path;
         }
       }
 
       navigate(target);
     }
-  }, [user, permissionsLoading, isAdmin, allowedRoutes, navigate]);
+  }, [user, permissionsLoading, isAdmin, isSuperAdmin, allowedRoutes, navigate]);
 
   if (user && permissionsLoading) {
     return (
@@ -95,7 +100,7 @@ const Auth = () => {
     }
 
     setIsLoading(true);
-    const { error } = await signIn(loginEmail, loginPassword);
+    const { error } = await signIn(loginEmail.trim().toLowerCase(), loginPassword);
     setIsLoading(false);
 
     if (error) {
@@ -108,7 +113,7 @@ const Auth = () => {
       }
     } else {
       toast.success('Welcome back!');
-      navigate('/');
+      // Route redirection handled cleanly by useEffect hook based on user role
     }
   };
 

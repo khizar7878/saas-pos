@@ -17,8 +17,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { printStockReport } from "@/utils/printStockReport";
+import { useTenant } from "@/contexts/TenantContext";
 
 const StockSummary = () => {
+    const { lexicon } = useTenant();
     const [searchTerm, setSearchTerm] = useState("");
     const { data: storeSettings } = useStoreSettings();
 
@@ -94,25 +96,29 @@ const StockSummary = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className={`grid gap-3 ${lexicon.enable_secondary_metric ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Meters</CardTitle>
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{stats.totalMeters.toLocaleString(undefined, { maximumFractionDigits: 2 })} m</div>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Suits</CardTitle>
+                        <CardTitle className="text-sm font-medium">Total {lexicon.item_plural}</CardTitle>
                         <Package className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.totalSuits.toLocaleString(undefined, { maximumFractionDigits: 1 })}</div>
                     </CardContent>
                 </Card>
+                {lexicon.enable_secondary_metric && (
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Total {lexicon.secondary_metric_name || "Meters"}</CardTitle>
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">
+                                {stats.totalMeters.toLocaleString(undefined, { maximumFractionDigits: 2 })} {lexicon.secondary_metric_symbol || "m"}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             <div className="rounded-xl border border-border bg-card flex-1 overflow-hidden flex flex-col">
@@ -123,8 +129,10 @@ const StockSummary = () => {
                                 <TableHead>Product Name</TableHead>
                                 <TableHead>SKU</TableHead>
                                 <TableHead>Category</TableHead>
-                                <TableHead className="text-right">Suits</TableHead>
-                                <TableHead className="text-right">QTY in Meters</TableHead>
+                                <TableHead className="text-right">Stock ({lexicon.item_plural})</TableHead>
+                                {lexicon.enable_secondary_metric && (
+                                    <TableHead className="text-right">QTY in {lexicon.secondary_metric_name || "Meters"}</TableHead>
+                                )}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -134,7 +142,9 @@ const StockSummary = () => {
                                     <TableCell>{product.sku}</TableCell>
                                     <TableCell>{Array.isArray(product.product_categories) ? product.product_categories[0]?.name : (product.product_categories as any)?.name || '-'}</TableCell>
                                     <TableCell className="text-right">{product.stock_quantity}</TableCell>
-                                    <TableCell className="text-right">{(product.stock_quantity * (product.meters_per_piece || 0)).toFixed(2)}</TableCell>
+                                    {lexicon.enable_secondary_metric && (
+                                        <TableCell className="text-right">{(product.stock_quantity * (product.meters_per_piece || 0)).toFixed(2)}</TableCell>
+                                    )}
                                 </TableRow>
                             ))}
                         </TableBody>

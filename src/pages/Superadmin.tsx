@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenant, Store, SubscriptionTier, SubscriptionStatus, FbrEnvironment } from '@/contexts/TenantContext';
+import { useTenant, type Store as TenantStore, type SubscriptionTier, type SubscriptionStatus, type FbrEnvironment } from '@/contexts/TenantContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Building2,
+  Store,
   Users,
   ShieldCheck,
   Plus,
@@ -23,8 +25,24 @@ import {
   Server,
   Zap,
   Globe,
-  Sliders
-} from 'lucide-react';
+  Sliders,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  Key,
+  ShoppingCart,
+  Package,
+  BarChart3,
+  Scale,
+  Settings,
+  ChevronDown,
+  ChevronUp,
+  CheckSquare,
+  RotateCcw
+} from "lucide-react";
+import { GRANULAR_SECTIONS, ALL_PAGE_PATHS, TIER_PRESETS } from '@/config/granularModules';
+import { INDUSTRY_ARCHETYPES, getArchetypeById } from '@/config/industryArchetypes';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,11 +74,296 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 
+interface GranularPermissionsEditorProps {
+  fbrEnabled: boolean;
+  onFbrChange: (enabled: boolean) => void;
+  enabledPages: string[];
+  onEnabledPagesChange: (pages: string[]) => void;
+  tier: SubscriptionTier;
+}
+
+const SECTION_ICONS: Record<string, React.ReactNode> = {
+  pos: <ShoppingCart className="w-4 h-4 text-emerald-500" />,
+  inventory: <Package className="w-4 h-4 text-blue-500" />,
+  reports: <BarChart3 className="w-4 h-4 text-purple-500" />,
+  accounting: <Scale className="w-4 h-4 text-amber-500" />,
+  fbr: <Building2 className="w-4 h-4 text-red-500" />,
+  online_store: <Globe className="w-4 h-4 text-indigo-500" />,
+  utilities: <Settings className="w-4 h-4 text-slate-500" />,
+};
+
+function GranularPermissionsEditor({
+  fbrEnabled,
+  onFbrChange,
+  enabledPages,
+  onEnabledPagesChange,
+  tier,
+}: GranularPermissionsEditorProps) {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    pos: true,
+    inventory: true,
+    reports: false,
+    accounting: true,
+    fbr: true,
+    online_store: false,
+    utilities: true,
+  });
+
+  const toggleAllExpanded = () => {
+    const allExpanded = Object.values(expandedSections).every(Boolean);
+    const nextState: Record<string, boolean> = {};
+    GRANULAR_SECTIONS.forEach(s => {
+      nextState[s.id] = !allExpanded;
+    });
+    setExpandedSections(nextState);
+  };
+
+  return (
+    <div className="space-y-4 pt-3 border-t">
+      {/* 1. Master FBR Disengagement Switch */}
+      <div
+        className={`p-4 rounded-xl border transition-all ${
+          fbrEnabled
+            ? 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800'
+            : 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div
+              className={`p-2.5 rounded-lg shrink-0 mt-0.5 ${
+                fbrEnabled
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-amber-600 text-white'
+              }`}
+            >
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="font-semibold text-sm">FBR Real-time Fiscalization</h4>
+                <Badge
+                  className={
+                    fbrEnabled
+                      ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-400/40 text-[11px]'
+                      : 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-400/40 text-[11px]'
+                  }
+                >
+                  {fbrEnabled ? '🟢 Service Engaged' : '🚫 100% Disengaged'}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {fbrEnabled
+                  ? 'FBR IRIS service is connected. Checkouts generate fiscal numbers and receipts print verification QR codes (or sandbox training markers).'
+                  : 'FBR service is completely bypassed. Checkout transactions execute locally with zero network delay, and thermal receipts print standard retail bills without FBR QR codes or test watermarks.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end">
+            <Switch
+              checked={fbrEnabled}
+              onCheckedChange={checked => {
+                onFbrChange(checked);
+                if (checked && !enabledPages.includes('/setup/fbr')) {
+                  onEnabledPagesChange([...enabledPages, '/setup/fbr']);
+                } else if (!checked && enabledPages.includes('/setup/fbr')) {
+                  onEnabledPagesChange(enabledPages.filter(p => p !== '/setup/fbr'));
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Granular Page Matrix Ribbon */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+            Granular Page Permissions
+          </span>
+          <Badge variant="outline" className="text-xs font-mono">
+            {enabledPages.length} / {ALL_PAGE_PATHS.length} Pages Active
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground"
+            onClick={toggleAllExpanded}
+          >
+            {Object.values(expandedSections).every(Boolean) ? 'Collapse All' : 'Expand All'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={() => {
+              onEnabledPagesChange([...ALL_PAGE_PATHS]);
+              if (!fbrEnabled) onFbrChange(true);
+            }}
+          >
+            <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Enable All
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs gap-1 text-indigo-600 dark:text-indigo-400"
+            onClick={() => {
+              const preset = TIER_PRESETS[tier] || TIER_PRESETS.professional;
+              onEnabledPagesChange([...preset.pages]);
+              onFbrChange(preset.fbr);
+            }}
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Reset to {tier.charAt(0).toUpperCase() + tier.slice(1)} Preset
+          </Button>
+        </div>
+      </div>
+
+      {/* 3. Granular Sections Accordion Cards */}
+      <div className="space-y-3">
+        {GRANULAR_SECTIONS.map(section => {
+          const sectionPagePaths = section.pages.map(p => p.path);
+          const enabledInSection = sectionPagePaths.filter(p => enabledPages.includes(p));
+          const allSectionActive =
+            sectionPagePaths.length > 0 && enabledInSection.length === sectionPagePaths.length;
+          const isExpanded = expandedSections[section.id] ?? true;
+
+          const toggleSection = (enable: boolean) => {
+            let nextPages: string[];
+            if (enable) {
+              const toAdd = sectionPagePaths.filter(p => !enabledPages.includes(p));
+              nextPages = [...enabledPages, ...toAdd];
+              if (section.id === 'fbr' && !fbrEnabled) {
+                onFbrChange(true);
+              }
+            } else {
+              nextPages = enabledPages.filter(p => !sectionPagePaths.includes(p));
+            }
+            onEnabledPagesChange(nextPages);
+          };
+
+          return (
+            <div key={section.id} className="border rounded-xl bg-card overflow-hidden shadow-xs">
+              <div className="p-3 bg-muted/40 flex items-center justify-between gap-3 border-b">
+                <div
+                  className="flex items-center gap-2.5 cursor-pointer select-none flex-1 min-w-0"
+                  onClick={() =>
+                    setExpandedSections(prev => ({ ...prev, [section.id]: !isExpanded }))
+                  }
+                >
+                  <div className="p-1.5 rounded-md bg-background border shadow-xs shrink-0">
+                    {SECTION_ICONS[section.id] || <Settings className="w-4 h-4" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm truncate">{section.title}</span>
+                      <Badge
+                        variant={
+                          allSectionActive ? 'default' : enabledInSection.length > 0 ? 'secondary' : 'outline'
+                        }
+                        className="text-[10px] h-4 px-1.5 font-mono shrink-0"
+                      >
+                        {enabledInSection.length} / {sectionPagePaths.length}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate">{section.description}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => toggleSection(!allSectionActive)}
+                  >
+                    {allSectionActive ? 'Deselect All' : 'Select All'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground"
+                    onClick={() =>
+                      setExpandedSections(prev => ({ ...prev, [section.id]: !isExpanded }))
+                    }
+                  >
+                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-2 bg-background/50">
+                  {section.pages.map(page => {
+                    const isChecked = enabledPages.includes(page.path);
+                    const isFbrLocked = page.path === '/setup/fbr' && !fbrEnabled;
+
+                    return (
+                      <div
+                        key={page.path}
+                        onClick={() => {
+                          if (isFbrLocked) return;
+                          if (isChecked) {
+                            onEnabledPagesChange(enabledPages.filter(p => p !== page.path));
+                          } else {
+                            onEnabledPagesChange([...enabledPages, page.path]);
+                          }
+                        }}
+                        className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          isChecked
+                            ? 'border-indigo-500/40 bg-indigo-50/40 dark:bg-indigo-950/30'
+                            : 'border-border/60 hover:bg-muted/40'
+                        } ${isFbrLocked ? 'opacity-60 cursor-not-allowed bg-muted/20' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={isFbrLocked}
+                          onChange={() => {}}
+                          className="mt-0.5 rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-foreground">{page.name}</span>
+                            {page.isCore && (
+                              <span className="text-[9px] bg-slate-200 dark:bg-slate-800 px-1 py-0.2 rounded text-muted-foreground font-semibold">
+                                CORE
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground line-clamp-1">
+                            {isFbrLocked ? 'Disabled by Master FBR Switch' : page.description}
+                          </p>
+                          <code className="text-[10px] text-muted-foreground/70 font-mono">
+                            {page.path}
+                          </code>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Superadmin() {
+  const navigate = useNavigate();
   const { currentStore, switchStore, isSuperAdmin, refreshStore } = useTenant();
   const { user } = useAuth();
 
-  const [stores, setStores] = useState<Store[]>([]);
+  const [stores, setStores] = useState<TenantStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -69,28 +372,95 @@ export default function Superadmin() {
   // Modal States
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [selectedStore, setSelectedStore] = useState<Store | null>(null);
+  const [selectedStore, setSelectedStore] = useState<TenantStore | null>(null);
 
   // New Store Form State
   const [newName, setNewName] = useState('');
   const [newSlug, setNewSlug] = useState('');
+  const [newOwnerName, setNewOwnerName] = useState('');
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
+  const [newOwnerPassword, setNewOwnerPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [newCity, setNewCity] = useState('Lahore');
   const [newNtn, setNewNtn] = useState('');
   const [newTier, setNewTier] = useState<SubscriptionTier>('professional');
   const [newFbrEnv, setNewFbrEnv] = useState<FbrEnvironment>('sandbox');
   const [newPosId, setNewPosId] = useState('189142');
-  const [newModules, setNewModules] = useState({
-    fbr_integration: true,
-    daily_reconciliation: true,
-    treasury_accounts: true,
-    credit_sales: true,
-    barcode_printing: true,
-    online_store: false,
-  });
+  const [newBusinessType, setNewBusinessType] = useState('general_retail');
+
+  // Granular page permissions and FBR master state for New Store
+  const [newFbrEnabled, setNewFbrEnabled] = useState(TIER_PRESETS.professional.fbr);
+  const [newEnabledPages, setNewEnabledPages] = useState<string[]>([...TIER_PRESETS.professional.pages]);
+
+  // Granular page permissions and FBR master state for Editing Store
+  const [editFbrEnabled, setEditFbrEnabled] = useState(true);
+  const [editEnabledPages, setEditEnabledPages] = useState<string[]>([]);
+
+  // Auto-sync preset when selecting subscription tier in creation modal
+  const handleNewTierChange = (tier: SubscriptionTier) => {
+    setNewTier(tier);
+    const preset = TIER_PRESETS[tier];
+    if (preset) {
+      setNewFbrEnabled(preset.fbr);
+      setNewEnabledPages([...preset.pages]);
+    }
+  };
+
+  // Open Edit Modal with full granular resolution
+  const openEditModal = (store: TenantStore) => {
+    setSelectedStore(store);
+    const isFbr = store.enabled_modules?.fbr_integration !== false;
+    setEditFbrEnabled(isFbr);
+    const existingPages = store.enabled_modules?.enabled_pages;
+    const initialPages =
+      Array.isArray(existingPages) && existingPages.length > 0
+        ? [...existingPages]
+        : [...(TIER_PRESETS[store.subscription_tier]?.pages || ALL_PAGE_PATHS)];
+    setEditEnabledPages(initialPages);
+    setEditModalOpen(true);
+  };
+
+  // Auto-sync preset when selecting subscription tier in edit modal
+  const handleEditTierChange = (tier: SubscriptionTier) => {
+    if (!selectedStore) return;
+    setSelectedStore({ ...selectedStore, subscription_tier: tier });
+    const preset = TIER_PRESETS[tier];
+    if (preset) {
+      setEditFbrEnabled(preset.fbr);
+      setEditEnabledPages([...preset.pages]);
+    }
+  };
+
+  // Success dialog state for freshly provisioned tenant & owner credentials
+  const [createdSuccessData, setCreatedSuccessData] = useState<{
+    storeName: string;
+    slug: string;
+    ownerName: string;
+    ownerEmail: string;
+    ownerPassword: string;
+    storeId: string;
+  } | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
+
+  // Generate secure temporary password
+  const generateRandomPassword = () => {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const symbols = '!@#$%';
+    let pw = '';
+    pw += upper.charAt(Math.floor(Math.random() * upper.length));
+    pw += lower.charAt(Math.floor(Math.random() * lower.length));
+    pw += digits.charAt(Math.floor(Math.random() * digits.length));
+    pw += symbols.charAt(Math.floor(Math.random() * symbols.length));
+    const allChars = upper + lower + digits + symbols;
+    for (let i = 0; i < 6; i++) {
+      pw += allChars.charAt(Math.floor(Math.random() * allChars.length));
+    }
+    return pw;
+  };
 
   // Load all stores
   const fetchStores = async () => {
@@ -102,7 +472,7 @@ export default function Superadmin() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setStores((data as Store[]) || []);
+      setStores((data as TenantStore[]) || []);
     } catch (err: any) {
       console.error('Failed to load stores:', err);
       toast.error('Failed to load stores: ' + err.message);
@@ -137,76 +507,76 @@ export default function Superadmin() {
     }
   };
 
-  // Create new tenant store
+  // Create new tenant store with complete owner auth provisioning
   const handleCreateStore = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newSlug.trim()) {
       toast.error('Store Name and URL Slug are required');
       return;
     }
+    if (!newOwnerEmail.trim()) {
+      toast.error('Owner Email is required to create client login credentials');
+      return;
+    }
+    if (!newOwnerPassword.trim()) {
+      toast.error('Initial Owner Password is required');
+      return;
+    }
 
     try {
       setSubmitting(true);
-      const newStoreId = crypto.randomUUID();
+      const ownerName = newOwnerName.trim() || `${newName.trim()} Owner`;
+      const ownerEmail = newOwnerEmail.trim().toLowerCase();
+      const ownerPassword = newOwnerPassword.trim();
 
-      // 1. Insert into stores
-      const { data: storeData, error: storeErr } = await supabase
-        .from('stores')
-        .insert([
-          {
-            id: newStoreId,
-            name: newName.trim(),
-            slug: newSlug.trim().toLowerCase(),
-            contact_email: newOwnerEmail.trim() || null,
-            phone: newPhone.trim() || null,
-            city: newCity.trim() || null,
-            ntn_strn: newNtn.trim() || null,
-            subscription_tier: newTier,
-            subscription_status: 'active',
-            fbr_environment: newFbrEnv,
-            enabled_modules: newModules,
-            is_active: true,
-          },
-        ])
-        .select()
-        .single();
+      const enabledModules = {
+        fbr_integration: newFbrEnabled,
+        daily_reconciliation: newEnabledPages.some(p => p.startsWith('/reconciliation')),
+        treasury_accounts: newEnabledPages.includes('/accounts'),
+        credit_sales: newEnabledPages.includes('/pos/pending-payments'),
+        barcode_printing: newEnabledPages.includes('/barcodes') || newEnabledPages.includes('/utilities/custom-labels'),
+        online_store: newEnabledPages.some(p => p.startsWith('/online-store') || p.startsWith('/order-book')),
+        enabled_pages: newEnabledPages,
+      };
 
-      if (storeErr) throw storeErr;
+      // Call Atomic Provisioning RPC
+      const { data: res, error: rpcErr } = await supabase.rpc('provision_tenant_store', {
+        p_store_name: newName.trim(),
+        p_slug: newSlug.trim().toLowerCase(),
+        p_owner_name: ownerName,
+        p_owner_email: ownerEmail,
+        p_owner_password: ownerPassword,
+        p_phone: newPhone.trim() || null,
+        p_city: newCity.trim() || 'Lahore',
+        p_ntn: newNtn.trim() || null,
+        p_subscription_tier: newTier,
+        p_fbr_environment: newFbrEnv,
+        p_fbr_pos_id: newPosId.trim() || '189142',
+        p_enabled_modules: enabledModules,
+        p_business_type: newBusinessType,
+      });
 
-      // 2. Insert store settings
-      const { error: settingsErr } = await supabase
-        .from('store_settings')
-        .insert([
-          {
-            store_id: newStoreId,
-            store_name: newName.trim(),
-            phone: newPhone.trim() || null,
-            email: newOwnerEmail.trim() || null,
-            fbr_integration_enabled: newModules.fbr_integration,
-            fbr_pos_id: newPosId.trim() || '189142',
-            fbr_api_url: 'http://146.190.202.112:5060/api/fbr/submit-invoice',
-            fbr_environment: newFbrEnv,
-            weekly_off_days: ['friday'],
-          },
-        ]);
+      if (rpcErr) throw rpcErr;
 
-      if (settingsErr) throw settingsErr;
-
-      // 3. Initialize Sequences
-      await supabase.from('sequences').insert([
-        { id: 'sale', store_id: newStoreId, current_value: 0, prefix: 'AK' },
-        { id: 'return', store_id: newStoreId, current_value: 0, prefix: 'RET' },
-        { id: 'credit_sale', store_id: newStoreId, current_value: 0, prefix: 'CS-' },
-      ]);
-
-      toast.success(`Store "${newName}" provisioned successfully!`);
+      toast.success(`Store "${newName}" & Owner credentials provisioned successfully!`);
       setCreateModalOpen(false);
+
+      // Open Success Credentials Modal
+      setCreatedSuccessData({
+        storeName: newName.trim(),
+        slug: newSlug.trim().toLowerCase(),
+        ownerName,
+        ownerEmail,
+        ownerPassword,
+        storeId: res?.store_id || '',
+      });
+
       resetNewStoreForm();
       await fetchStores();
       await refreshStore();
     } catch (err: any) {
       console.error('Failed to create store:', err);
-      toast.error('Failed to create store: ' + err.message);
+      toast.error('Failed to provision store: ' + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -215,25 +585,23 @@ export default function Superadmin() {
   const resetNewStoreForm = () => {
     setNewName('');
     setNewSlug('');
+    setNewOwnerName('');
     setNewOwnerEmail('');
+    setNewOwnerPassword('');
+    setShowPassword(false);
     setNewPhone('');
     setNewCity('Lahore');
     setNewNtn('');
     setNewTier('professional');
     setNewFbrEnv('sandbox');
     setNewPosId('189142');
-    setNewModules({
-      fbr_integration: true,
-      daily_reconciliation: true,
-      treasury_accounts: true,
-      credit_sales: true,
-      barcode_printing: true,
-      online_store: false,
-    });
+    setNewBusinessType('general_retail');
+    setNewFbrEnabled(TIER_PRESETS.professional.fbr);
+    setNewEnabledPages([...TIER_PRESETS.professional.pages]);
   };
 
   // Toggle FBR mode for a store directly from table
-  const handleToggleFbr = async (store: Store) => {
+  const handleToggleFbr = async (store: TenantStore) => {
     const nextEnv: FbrEnvironment = store.fbr_environment === 'production' ? 'sandbox' : 'production';
     try {
       const { error: storeErr } = await supabase
@@ -261,7 +629,7 @@ export default function Superadmin() {
   };
 
   // Toggle active/suspended
-  const handleToggleStatus = async (store: Store) => {
+  const handleToggleStatus = async (store: TenantStore) => {
     const nextStatus: SubscriptionStatus = store.subscription_status === 'active' ? 'suspended' : 'active';
     try {
       const { error } = await supabase
@@ -287,6 +655,17 @@ export default function Superadmin() {
     if (!selectedStore) return;
     try {
       setSubmitting(true);
+      const enabledModules = {
+        ...selectedStore.enabled_modules,
+        fbr_integration: editFbrEnabled,
+        daily_reconciliation: editEnabledPages.some(p => p.startsWith('/reconciliation')),
+        treasury_accounts: editEnabledPages.includes('/accounts'),
+        credit_sales: editEnabledPages.includes('/pos/pending-payments'),
+        barcode_printing: editEnabledPages.includes('/barcodes') || editEnabledPages.includes('/utilities/custom-labels'),
+        online_store: editEnabledPages.some(p => p.startsWith('/online-store') || p.startsWith('/order-book')),
+        enabled_pages: editEnabledPages,
+      };
+
       const { error } = await supabase
         .from('stores')
         .update({
@@ -294,7 +673,7 @@ export default function Superadmin() {
           subscription_tier: selectedStore.subscription_tier,
           subscription_status: selectedStore.subscription_status,
           fbr_environment: selectedStore.fbr_environment,
-          enabled_modules: selectedStore.enabled_modules,
+          enabled_modules: enabledModules,
           updated_at: new Date().toISOString(),
         })
         .eq('id', selectedStore.id);
@@ -341,7 +720,10 @@ export default function Superadmin() {
 
         <div className="flex items-center gap-3">
           <Button
-            onClick={() => setCreateModalOpen(true)}
+            onClick={() => {
+              if (!newOwnerPassword) setNewOwnerPassword(generateRandomPassword());
+              setCreateModalOpen(true);
+            }}
             className="bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg gap-2"
           >
             <Plus className="w-4 h-4" /> Onboard New Store
@@ -497,8 +879,11 @@ export default function Superadmin() {
                                 </Badge>
                               )}
                             </div>
-                            <div className="text-xs text-muted-foreground font-mono">
-                              /{store.slug}
+                            <div className="text-xs text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
+                              <span>/{store.slug}</span>
+                              <Badge variant="outline" className="text-[10px] py-0 px-1 font-sans">
+                                {getArchetypeById(store.business_type).name.split(' ')[0]}
+                              </Badge>
                             </div>
                           </div>
                         </div>
@@ -536,25 +921,39 @@ export default function Superadmin() {
 
                       {/* FBR Mode Toggle */}
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleToggleFbr(store)}
-                          className={`gap-1.5 h-7 text-xs font-medium border ${
-                            isSandbox
-                              ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300'
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300'
-                          }`}
-                        >
-                          {isSandbox ? '🧪 Sandbox' : '🟢 Production'}
-                        </Button>
+                        {store.enabled_modules?.fbr_integration === false ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 text-[11px] font-normal"
+                          >
+                            🚫 Disengaged
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleToggleFbr(store)}
+                            className={`gap-1.5 h-7 text-xs font-medium border ${
+                              isSandbox
+                                ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300'
+                            }`}
+                          >
+                            {isSandbox ? '🧪 Sandbox' : '🟢 Production'}
+                          </Button>
+                        )}
                       </TableCell>
 
                       {/* Modules Badges */}
                       <TableCell>
                         <div className="flex flex-wrap gap-1 max-w-xs">
-                          {store.enabled_modules?.fbr_integration && (
-                            <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-muted-foreground">
+                          {Array.isArray(store.enabled_modules?.enabled_pages) && (
+                            <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0 h-4">
+                              {store.enabled_modules.enabled_pages.length} pages
+                            </Badge>
+                          )}
+                          {store.enabled_modules?.fbr_integration !== false && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.5 rounded font-medium">
                               FBR
                             </span>
                           )}
@@ -603,10 +1002,7 @@ export default function Superadmin() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            setSelectedStore(store);
-                            setEditModalOpen(true);
-                          }}
+                          onClick={() => openEditModal(store)}
                           className="h-8 text-xs"
                         >
                           <Settings2 className="w-3.5 h-3.5" />
@@ -623,7 +1019,7 @@ export default function Superadmin() {
 
       {/* Onboard New Store Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
               <Building2 className="w-5 h-5 text-indigo-600" /> Onboard New Tenant Store
@@ -635,6 +1031,34 @@ export default function Superadmin() {
 
           <form onSubmit={handleCreateStore} className="space-y-4 py-2">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Industry Archetype Selector */}
+              <div className="space-y-1.5 md:col-span-2 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                <Label htmlFor="business-type" className="flex items-center gap-1.5 font-semibold text-xs text-indigo-950 dark:text-indigo-200">
+                  <Store className="w-3.5 h-3.5 text-indigo-600" /> Industry Archetype & Retail Model
+                </Label>
+                <Select value={newBusinessType} onValueChange={setNewBusinessType}>
+                  <SelectTrigger id="business-type" className="h-9 bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INDUSTRY_ARCHETYPES.map((arch) => (
+                      <SelectItem key={arch.id} value={arch.id}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{arch.name}</span>
+                          <Badge variant="outline" className="text-[10px] ml-1">{arch.badge}</Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {getArchetypeById(newBusinessType).description} • Unit: <strong>{getArchetypeById(newBusinessType).defaultLexicon.primary_unit}</strong>
+                  {getArchetypeById(newBusinessType).defaultLexicon.enable_secondary_metric && (
+                    <> • Secondary Metric: <strong>{getArchetypeById(newBusinessType).defaultLexicon.secondary_metric_name}</strong></>
+                  )}
+                </p>
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="store-name">Store Name *</Label>
                 <Input
@@ -657,15 +1081,68 @@ export default function Superadmin() {
                 />
               </div>
 
+              {/* Owner Credentials Section */}
               <div className="space-y-1.5">
-                <Label htmlFor="owner-email">Owner / Contact Email</Label>
+                <Label htmlFor="owner-name">Owner Full Name *</Label>
+                <Input
+                  id="owner-name"
+                  placeholder="e.g. Tariq Mahmood"
+                  value={newOwnerName}
+                  onChange={e => setNewOwnerName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="owner-email">Owner Login Email *</Label>
                 <Input
                   id="owner-email"
                   type="email"
                   placeholder="owner@royalsilks.pk"
                   value={newOwnerEmail}
                   onChange={e => setNewOwnerEmail(e.target.value)}
+                  required
                 />
+              </div>
+
+              <div className="space-y-1.5 md:col-span-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-lg border">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="owner-password" className="text-xs font-semibold flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-indigo-600" /> Initial Owner Password *
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setNewOwnerPassword(generateRandomPassword())}
+                    className="h-6 text-[11px] text-indigo-600 hover:text-indigo-500 gap-1 px-1.5"
+                  >
+                    <RefreshCw className="w-3 h-3" /> Generate Password
+                  </Button>
+                </div>
+                <div className="relative mt-1">
+                  <Input
+                    id="owner-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter or generate temporary password"
+                    value={newOwnerPassword}
+                    onChange={e => setNewOwnerPassword(e.target.value)}
+                    required
+                    className="pr-10 font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  This user will be granted the <strong>Store Owner</strong> role with full access to this store's POS, catalog, and khata.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -700,7 +1177,7 @@ export default function Superadmin() {
 
               <div className="space-y-1.5">
                 <Label>Subscription Tier</Label>
-                <Select value={newTier} onValueChange={(val: any) => setNewTier(val)}>
+                <Select value={newTier} onValueChange={(val: any) => handleNewTierChange(val)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -724,85 +1201,123 @@ export default function Superadmin() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            {/* Modular Feature Flags */}
-            <div className="pt-2 border-t space-y-3">
-              <Label className="font-semibold text-sm">Enabled Modules & Feature Flags</Label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <label className="flex items-center gap-2 text-xs cursor-pointer border p-2 rounded-lg hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={newModules.fbr_integration}
-                    onChange={e => setNewModules({ ...newModules, fbr_integration: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span>FBR Integration</span>
-                </label>
-                <label className="flex items-center gap-2 text-xs cursor-pointer border p-2 rounded-lg hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={newModules.daily_reconciliation}
-                    onChange={e => setNewModules({ ...newModules, daily_reconciliation: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span>Daily Reconciliation</span>
-                </label>
-                <label className="flex items-center gap-2 text-xs cursor-pointer border p-2 rounded-lg hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={newModules.treasury_accounts}
-                    onChange={e => setNewModules({ ...newModules, treasury_accounts: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span>Treasury Accounts</span>
-                </label>
-                <label className="flex items-center gap-2 text-xs cursor-pointer border p-2 rounded-lg hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={newModules.credit_sales}
-                    onChange={e => setNewModules({ ...newModules, credit_sales: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span>Credit Sales / Khata</span>
-                </label>
-                <label className="flex items-center gap-2 text-xs cursor-pointer border p-2 rounded-lg hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={newModules.barcode_printing}
-                    onChange={e => setNewModules({ ...newModules, barcode_printing: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span>Barcode Printing</span>
-                </label>
-                <label className="flex items-center gap-2 text-xs cursor-pointer border p-2 rounded-lg hover:bg-muted/50">
-                  <input
-                    type="checkbox"
-                    checked={newModules.online_store}
-                    onChange={e => setNewModules({ ...newModules, online_store: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span>Online Store</span>
-                </label>
+              <div className="space-y-1.5">
+                <Label htmlFor="pos-id">Initial POS ID</Label>
+                <Input
+                  id="pos-id"
+                  placeholder="189142"
+                  value={newPosId}
+                  onChange={e => setNewPosId(e.target.value)}
+                />
               </div>
             </div>
+
+            {/* Granular Page & Feature Permissions */}
+            <GranularPermissionsEditor
+              fbrEnabled={newFbrEnabled}
+              onFbrChange={setNewFbrEnabled}
+              enabledPages={newEnabledPages}
+              onEnabledPagesChange={setNewEnabledPages}
+              tier={newTier}
+            />
 
             <DialogFooter className="pt-4 border-t">
               <Button type="button" variant="outline" onClick={() => setCreateModalOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting} className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                {submitting ? 'Provisioning...' : 'Provision Store'}
+                {submitting ? 'Provisioning...' : 'Provision Store & Create Owner'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
+      {/* Onboarding Success Dialog with Copyable Credentials */}
+      <Dialog open={!!createdSuccessData} onOpenChange={(open) => !open && setCreatedSuccessData(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2 text-emerald-600">
+              <CheckCircle2 className="w-6 h-6" /> Store & Owner Account Ready!
+            </DialogTitle>
+            <DialogDescription>
+              The new tenant store has been provisioned and the initial owner credentials have been created. Share these details with the client.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdSuccessData && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border bg-slate-50 dark:bg-slate-900 p-3 space-y-2 text-sm">
+                <div className="flex justify-between items-center py-1 border-b border-border/50">
+                  <span className="text-muted-foreground text-xs">Store Name:</span>
+                  <span className="font-semibold text-xs">{createdSuccessData.storeName}</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/50">
+                  <span className="text-muted-foreground text-xs">Store URL Slug:</span>
+                  <code className="text-xs bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono">
+                    {createdSuccessData.slug}
+                  </code>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/50">
+                  <span className="text-muted-foreground text-xs">Owner Name:</span>
+                  <span className="text-xs font-medium">{createdSuccessData.ownerName}</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-border/50">
+                  <span className="text-muted-foreground text-xs">Login Email:</span>
+                  <span className="font-mono text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                    {createdSuccessData.ownerEmail}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-muted-foreground text-xs">Initial Password:</span>
+                  <span className="font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    {createdSuccessData.ownerPassword}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full text-xs gap-1.5"
+                  onClick={() => {
+                    const credsText = `SaaS Retail POS Credentials:\nStore: ${createdSuccessData.storeName}\nLogin URL: ${window.location.origin}/auth\nEmail: ${createdSuccessData.ownerEmail}\nPassword: ${createdSuccessData.ownerPassword}`;
+                    navigator.clipboard.writeText(credsText);
+                    toast.success('Credentials copied to clipboard!');
+                  }}
+                >
+                  <Copy className="w-3.5 h-3.5" /> Copy Client Credentials to Clipboard
+                </Button>
+                {createdSuccessData.storeId && (
+                  <Button
+                    type="button"
+                    className="w-full text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white"
+                    onClick={async () => {
+                      await switchStore(createdSuccessData.storeId);
+                      setCreatedSuccessData(null);
+                      navigate('/');
+                    }}
+                  >
+                    <Zap className="w-3.5 h-3.5" /> Switch to Store Workspace Now
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCreatedSuccessData(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Store Modal */}
       {selectedStore && (
         <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-          <DialogContent className="max-w-xl">
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Settings2 className="w-5 h-5 text-indigo-600" /> Manage Store: {selectedStore.name}
@@ -826,17 +1341,15 @@ export default function Superadmin() {
                   <Label>Subscription Tier</Label>
                   <Select
                     value={selectedStore.subscription_tier}
-                    onValueChange={(val: any) =>
-                      setSelectedStore({ ...selectedStore, subscription_tier: val })
-                    }
+                    onValueChange={(val: any) => handleEditTierChange(val)}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="starter">Starter</SelectItem>
-                      <SelectItem value="professional">Professional</SelectItem>
-                      <SelectItem value="enterprise">Enterprise</SelectItem>
+                      <SelectItem value="starter">Starter (Single Till)</SelectItem>
+                      <SelectItem value="professional">Professional (Multi-Till & FBR)</SelectItem>
+                      <SelectItem value="enterprise">Enterprise (Unlimited + Online)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -881,35 +1394,14 @@ export default function Superadmin() {
                 </Select>
               </div>
 
-              {/* Module Toggles */}
-              <div className="space-y-2 pt-2 border-t">
-                <Label className="text-xs font-semibold">Enabled Modules</Label>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {['fbr_integration', 'daily_reconciliation', 'treasury_accounts', 'credit_sales', 'barcode_printing', 'online_store'].map(
-                    modKey => (
-                      <label
-                        key={modKey}
-                        className="flex items-center gap-2 border p-2 rounded cursor-pointer hover:bg-muted/50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!selectedStore.enabled_modules?.[modKey]}
-                          onChange={e =>
-                            setSelectedStore({
-                              ...selectedStore,
-                              enabled_modules: {
-                                ...selectedStore.enabled_modules,
-                                [modKey]: e.target.checked,
-                              },
-                            })
-                          }
-                        />
-                        <span className="capitalize">{modKey.replace(/_/g, ' ')}</span>
-                      </label>
-                    )
-                  )}
-                </div>
-              </div>
+              {/* Granular Page & Feature Permissions */}
+              <GranularPermissionsEditor
+                fbrEnabled={editFbrEnabled}
+                onFbrChange={setEditFbrEnabled}
+                enabledPages={editEnabledPages}
+                onEnabledPagesChange={setEditEnabledPages}
+                tier={selectedStore.subscription_tier}
+              />
             </div>
 
             <DialogFooter>

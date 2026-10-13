@@ -19,8 +19,10 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { DateRange } from "react-day-picker";
+import { useTenant } from "@/contexts/TenantContext";
 
 const ReceivedStockReport = () => {
+    const { lexicon } = useTenant();
     // Default to current month
     const [date, setDate] = useState<DateRange | undefined>({
         from: startOfMonth(new Date()),
@@ -180,7 +182,7 @@ const ReceivedStockReport = () => {
                 </div>
                 <div className="rounded-xl border border-border bg-card p-4 flex flex-row items-center justify-between space-y-0">
                     <div className="space-y-1">
-                        <p className="text-sm font-medium text-muted-foreground">Total Suits</p>
+                        <p className="text-sm font-medium text-muted-foreground">Total {lexicon.item_plural}</p>
                         {isLoading ? (
                             <div className="h-8 flex items-center">
                                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -190,24 +192,26 @@ const ReceivedStockReport = () => {
                         )}
                     </div>
                     <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-                       <span className="font-bold text-primary">S</span>
+                       <span className="font-bold text-primary">{lexicon.item_singular.charAt(0).toUpperCase()}</span>
                     </div>
                 </div>
-                <div className="rounded-xl border border-border bg-card p-4 flex flex-row items-center justify-between space-y-0">
-                    <div className="space-y-1">
-                        <p className="text-sm font-medium text-muted-foreground">Total Meters</p>
-                        {isLoading ? (
-                            <div className="h-8 flex items-center">
-                                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                            </div>
-                        ) : (
-                            <p className="text-2xl font-bold text-foreground">{totalMeters.toLocaleString()}m</p>
-                        )}
+                {lexicon.enable_secondary_metric && (
+                    <div className="rounded-xl border border-border bg-card p-4 flex flex-row items-center justify-between space-y-0">
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium text-muted-foreground">Total {lexicon.secondary_metric_name || "Meters"}</p>
+                            {isLoading ? (
+                                <div className="h-8 flex items-center">
+                                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                                </div>
+                            ) : (
+                                <p className="text-2xl font-bold text-foreground">{totalMeters.toLocaleString()}{lexicon.secondary_metric_symbol || "m"}</p>
+                            )}
+                        </div>
+                        <div className="h-10 w-10 bg-success/10 rounded-full flex items-center justify-center">
+                            <span className="font-bold text-success">{(lexicon.secondary_metric_symbol || "m").charAt(0).toUpperCase()}</span>
+                        </div>
                     </div>
-                    <div className="h-10 w-10 bg-success/10 rounded-full flex items-center justify-center">
-                        <span className="font-bold text-success">M</span>
-                    </div>
-                </div>
+                )}
             </div>
 
             {/* Table */}
@@ -219,14 +223,16 @@ const ReceivedStockReport = () => {
                                 <TableHead className="text-muted-foreground min-w-[120px]">Date</TableHead>
                                 <TableHead className="text-muted-foreground min-w-[150px]">Receipt #</TableHead>
                                 <TableHead className="text-muted-foreground w-[40%]">Item Details</TableHead>
-                                <TableHead className="text-muted-foreground text-center">No. of Suits</TableHead>
-                                <TableHead className="text-muted-foreground text-right">QTY (Meters)</TableHead>
+                                <TableHead className="text-muted-foreground text-center">No. of {lexicon.item_plural}</TableHead>
+                                {lexicon.enable_secondary_metric && (
+                                    <TableHead className="text-muted-foreground text-right">QTY ({lexicon.secondary_metric_name || "Meters"})</TableHead>
+                                )}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center">
+                                    <TableCell colSpan={lexicon.enable_secondary_metric ? 5 : 4} className="h-24 text-center">
                                         <div className="flex justify-center items-center">
                                             <Loader2 className="h-6 w-6 animate-spin text-primary" />
                                         </div>
@@ -234,7 +240,7 @@ const ReceivedStockReport = () => {
                                 </TableRow>
                             ) : receipts.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={lexicon.enable_secondary_metric ? 5 : 4} className="h-24 text-center text-muted-foreground">
                                         No stock receipts found for selected period.
                                     </TableCell>
                                 </TableRow>
@@ -260,9 +266,11 @@ const ReceivedStockReport = () => {
                                         <TableCell className="text-center text-foreground font-semibold align-top">
                                             {r.total_rolls}
                                         </TableCell>
-                                        <TableCell className="text-right text-foreground font-semibold align-top">
-                                            {r.total_meters.toLocaleString()}m
-                                        </TableCell>
+                                        {lexicon.enable_secondary_metric && (
+                                            <TableCell className="text-right text-foreground font-semibold align-top">
+                                                {r.total_meters.toLocaleString()}{lexicon.secondary_metric_symbol || "m"}
+                                            </TableCell>
+                                        )}
                                     </TableRow>
                                 ))
                             )}

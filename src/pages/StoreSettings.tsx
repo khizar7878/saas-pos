@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useStoreSettings, useUpdateStoreSettings } from "@/hooks/useStoreSettings";
 
@@ -6,9 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Store, Save, Mail, Phone, MapPin, FileText, Image, Sliders, Palette, CalendarDays } from "lucide-react";
+import { Loader2, Store, Save, Mail, Phone, MapPin, FileText, Image, Sliders, Palette, CalendarDays, Tags, Plus, Trash2, RefreshCw } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useTheme } from "@/components/theme/ThemeProvider";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { INDUSTRY_ARCHETYPES, getArchetypeById, type CustomProductField } from "@/config/industryArchetypes";
+import { useTenant } from "@/contexts/TenantContext";
+import { toast } from "sonner";
 
 interface StoreSettingsForm {
     store_name: string;
@@ -21,18 +33,40 @@ interface StoreSettingsForm {
     exchange_policy: string;
     logo_url?: string;
     weekly_off_days?: string[];
+    lexicon?: {
+        item_singular: string;
+        item_plural: string;
+        primary_unit: string;
+        secondary_metric_name?: string | null;
+        secondary_metric_symbol?: string | null;
+        enable_secondary_metric: boolean;
+        allow_fractional_qty: boolean;
+    };
+    custom_product_fields?: CustomProductField[];
 }
 
 const StoreSettings = () => {
     const { data: settings, isLoading } = useStoreSettings();
     const updateSettings = useUpdateStoreSettings();
+    const { currentStore } = useTenant();
 
     const { theme, setTheme } = useTheme();
 
     const { register, handleSubmit, reset, watch, setValue, formState: { isDirty } } = useForm<StoreSettingsForm>();
 
+    // Local state for adding a new attribute field
+    const [newFieldName, setNewFieldName] = useState("");
+    const [newFieldType, setNewFieldType] = useState<"text" | "number" | "select" | "date">("text");
+    const [newFieldOptions, setNewFieldOptions] = useState("");
+    const [newFieldPlaceholder, setNewFieldPlaceholder] = useState("");
+
     useEffect(() => {
         if (settings) {
+            const archetype = getArchetypeById(currentStore?.business_type);
+            const initialFields = Array.isArray(settings.custom_product_fields) && settings.custom_product_fields.length > 0
+                ? settings.custom_product_fields
+                : (archetype.defaultCustomFields || []);
+
             reset({
                 store_name: settings.store_name || "",
                 address: settings.address || "",
@@ -44,9 +78,59 @@ const StoreSettings = () => {
                 exchange_policy: settings.exchange_policy || "",
                 logo_url: settings.logo_url || "",
                 weekly_off_days: Array.isArray(settings.weekly_off_days) ? settings.weekly_off_days : ['friday'],
+                lexicon: settings.lexicon || {
+                    item_singular: "Product",
+                    item_plural: "Products",
+                    primary_unit: "pcs",
+                    secondary_metric_name: "Meters",
+                    secondary_metric_symbol: "m",
+                    enable_secondary_metric: false,
+                    allow_fractional_qty: false
+                },
+                custom_product_fields: initialFields,
             });
         }
-    }, [settings, reset]);
+    }, [settings, currentStore?.business_type, reset]);
+
+    const handleAddCustomField = () => {
+        if (!newFieldName.trim()) {
+            toast.error("Please enter an attribute name");
+            return;
+        }
+        const slug = newFieldName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        const currentList: CustomProductField[] = watch("custom_product_fields") || [];
+        if (currentList.some(f => f.id === slug)) {
+            toast.error(`An attribute with ID '${slug}' already exists`);
+            return;
+        }
+        const newField: CustomProductField = {
+            id: slug,
+            name: newFieldName.trim(),
+            type: newFieldType,
+            placeholder: newFieldPlaceholder.trim() || undefined,
+            options: newFieldType === 'select' ? newFieldOptions.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+            show_in_pos: true,
+            show_in_table: true,
+        };
+        setValue("custom_product_fields", [...currentList, newField], { shouldDirty: true });
+        setNewFieldName("");
+        setNewFieldOptions("");
+        setNewFieldPlaceholder("");
+        setNewFieldType("text");
+        toast.success(`Added attribute '${newField.name}'`);
+    };
+
+    const handleRemoveCustomField = (id: string) => {
+        const currentList: CustomProductField[] = watch("custom_product_fields") || [];
+        setValue("custom_product_fields", currentList.filter(f => f.id !== id), { shouldDirty: true });
+        toast.info("Removed attribute field");
+    };
+
+    const handleResetToArchetypeFields = () => {
+        const archetype = getArchetypeById(currentStore?.business_type);
+        setValue("custom_product_fields", archetype.defaultCustomFields || [], { shouldDirty: true });
+        toast.success(`Reset attributes to ${archetype.name} defaults`);
+    };
 
     const onSubmit = (data: StoreSettingsForm) => {
         updateSettings.mutate(data);
@@ -203,6 +287,286 @@ const StoreSettings = () => {
                                             Recommended: Square image (e.g. 300x300px), max size 2MB.
                                             Logo will appear on Login screen & Thermal Invoices.
                                         </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 4: Store Terminology & Metric Lexicon */}
+                            <div className="bg-card p-6 rounded-xl border border-border shadow-sm space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-foreground font-semibold text-base">
+                                        <Sliders className="w-4 h-4 text-primary" />
+                                        <span>Product Terminology & Metrics</span>
+                                    </div>
+                                    <span className="text-[11px] font-medium bg-primary/10 text-primary px-2.5 py-0.5 rounded-full">
+                                        Dynamic Retail Model
+                                    </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    Configure how items, units, and inventory dimensions are named and displayed across your store.
+                                </p>
+                                <Separator />
+
+                                {/* Quick Presets */}
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick Fill from Industry Preset</Label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {INDUSTRY_ARCHETYPES.map((arch) => (
+                                            <button
+                                                key={arch.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setValue("lexicon", arch.defaultLexicon, { shouldDirty: true });
+                                                }}
+                                                className="text-xs px-2.5 py-1 rounded-md border border-border bg-muted/40 hover:bg-muted text-foreground transition-colors font-medium flex items-center gap-1"
+                                            >
+                                                <span>{arch.name.split("&")[0].trim()}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Terminology inputs */}
+                                <div className="grid gap-3 sm:grid-cols-3 pt-1">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="item_singular" className="text-xs font-medium">Item Singular *</Label>
+                                        <Input
+                                            id="item_singular"
+                                            {...register("lexicon.item_singular", { required: true })}
+                                            placeholder="e.g. Suit, Product, Article"
+                                            className="h-9 text-sm"
+                                        />
+                                        <p className="text-[10px] text-muted-foreground">Buttons & single item labels</p>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="item_plural" className="text-xs font-medium">Item Plural *</Label>
+                                        <Input
+                                            id="item_plural"
+                                            {...register("lexicon.item_plural", { required: true })}
+                                            placeholder="e.g. Suits, Products, Articles"
+                                            className="h-9 text-sm"
+                                        />
+                                        <p className="text-[10px] text-muted-foreground">Headers & catalog tables</p>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="primary_unit" className="text-xs font-medium">Primary Unit *</Label>
+                                        <Input
+                                            id="primary_unit"
+                                            {...register("lexicon.primary_unit", { required: true })}
+                                            placeholder="e.g. suits, pcs, pairs, kg"
+                                            className="h-9 text-sm"
+                                        />
+                                        <p className="text-[10px] text-muted-foreground">Quantity badges & unit</p>
+                                    </div>
+                                </div>
+
+                                {/* Secondary Metric Toggle */}
+                                <div className="rounded-lg border border-border bg-muted/20 p-3.5 space-y-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="space-y-0.5">
+                                            <Label htmlFor="enable_secondary_metric" className="text-sm font-medium cursor-pointer">
+                                                Enable Secondary Dimension / Cut Metric
+                                            </Label>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Turn on if items have cut lengths or weight (e.g. Meters per Suit). Disabling hides extra measurement columns.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            id="enable_secondary_metric"
+                                            checked={watch("lexicon.enable_secondary_metric") ?? false}
+                                            onCheckedChange={(checked) => {
+                                                setValue("lexicon.enable_secondary_metric", checked, { shouldDirty: true });
+                                            }}
+                                        />
+                                    </div>
+
+                                    {watch("lexicon.enable_secondary_metric") && (
+                                        <div className="grid gap-3 sm:grid-cols-2 pt-2 border-t border-border">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="secondary_metric_name" className="text-xs font-medium">Metric Name</Label>
+                                                <Input
+                                                    id="secondary_metric_name"
+                                                    {...register("lexicon.secondary_metric_name")}
+                                                    placeholder="e.g. Meters, Rolls, Weight"
+                                                    className="h-9 text-sm"
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="secondary_metric_symbol" className="text-xs font-medium">Metric Symbol / Abbr.</Label>
+                                                <Input
+                                                    id="secondary_metric_symbol"
+                                                    {...register("lexicon.secondary_metric_symbol")}
+                                                    placeholder="e.g. m, rolls, g"
+                                                    className="h-9 text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Allow Fractional Quantity */}
+                                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3.5">
+                                    <div className="space-y-0.5">
+                                        <Label htmlFor="allow_fractional_qty" className="text-sm font-medium cursor-pointer">
+                                            Allow Fractional Quantities
+                                        </Label>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Permits decimal entries (e.g. 2.5m, 1.25kg) on checkout and inventory.
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        id="allow_fractional_qty"
+                                        checked={watch("lexicon.allow_fractional_qty") ?? false}
+                                        onCheckedChange={(checked) => {
+                                            setValue("lexicon.allow_fractional_qty", checked, { shouldDirty: true });
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Card: Custom Product Specifications & Attributes */}
+                            <div className="bg-card p-6 rounded-xl border border-border shadow-sm space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-foreground font-semibold text-base">
+                                        <Tags className="w-4 h-4 text-primary" />
+                                        <span>Product Specifications & Custom Attributes</span>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleResetToArchetypeFields}
+                                        className="text-xs h-7 text-muted-foreground hover:text-foreground gap-1"
+                                    >
+                                        <RefreshCw className="w-3 h-3" />
+                                        Reset to Presets
+                                    </Button>
+                                </div>
+                                <Separator />
+
+                                <p className="text-xs text-muted-foreground">
+                                    Configure custom attributes (e.g. Brand, Fabric Type, Season, Warranty, Expiry Date) that appear when creating products and in the catalog table.
+                                </p>
+
+                                {/* Existing Fields List */}
+                                <div className="space-y-2">
+                                    {(!watch("custom_product_fields") || watch("custom_product_fields")?.length === 0) ? (
+                                        <div className="text-center py-6 border border-dashed border-border rounded-lg text-xs text-muted-foreground">
+                                            No custom attributes configured yet. Add one below or reset to archetype presets.
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-2">
+                                            {watch("custom_product_fields")?.map((field) => (
+                                                <div
+                                                    key={field.id}
+                                                    className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 transition-colors"
+                                                >
+                                                    <div className="space-y-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-semibold text-foreground">{field.name}</span>
+                                                            <Badge variant="outline" className="text-[10px] uppercase font-mono tracking-wider">
+                                                                {field.type}
+                                                            </Badge>
+                                                            <span className="text-[11px] text-muted-foreground font-mono">
+                                                                ({field.id})
+                                                            </span>
+                                                        </div>
+                                                        {field.type === 'select' && field.options && field.options.length > 0 && (
+                                                            <p className="text-[11px] text-muted-foreground truncate max-w-md">
+                                                                Options: {field.options.join(", ")}
+                                                            </p>
+                                                        )}
+                                                        {field.placeholder && (
+                                                            <p className="text-[11px] text-muted-foreground">
+                                                                Placeholder: &quot;{field.placeholder}&quot;
+                                                            </p>
+                                                        )}
+                                                    </div>
+
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleRemoveCustomField(field.id)}
+                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Add New Field Box */}
+                                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                        <Plus className="w-3.5 h-3.5 text-primary" />
+                                        Add New Specification Attribute
+                                    </span>
+
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="new_field_name" className="text-xs">Attribute Name</Label>
+                                            <Input
+                                                id="new_field_name"
+                                                value={newFieldName}
+                                                onChange={(e) => setNewFieldName(e.target.value)}
+                                                placeholder="e.g. Fabric Type, Warranty, Season"
+                                                className="h-8 text-xs bg-background"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <Label htmlFor="new_field_type" className="text-xs">Field Type</Label>
+                                            <Select
+                                                value={newFieldType}
+                                                onValueChange={(val: any) => setNewFieldType(val)}
+                                            >
+                                                <SelectTrigger id="new_field_type" className="h-8 text-xs bg-background">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="text">Text Input</SelectItem>
+                                                    <SelectItem value="number">Numeric</SelectItem>
+                                                    <SelectItem value="select">Select Dropdown</SelectItem>
+                                                    <SelectItem value="date">Date Picker</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    {newFieldType === 'select' && (
+                                        <div className="space-y-1">
+                                            <Label htmlFor="new_field_options" className="text-xs">Dropdown Options (Comma-separated)</Label>
+                                            <Input
+                                                id="new_field_options"
+                                                value={newFieldOptions}
+                                                onChange={(e) => setNewFieldOptions(e.target.value)}
+                                                placeholder="e.g. Lawn, Cotton, Karandi, Khaddar, Silk"
+                                                className="h-8 text-xs bg-background"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between gap-3 pt-1">
+                                        <Input
+                                            value={newFieldPlaceholder}
+                                            onChange={(e) => setNewFieldPlaceholder(e.target.value)}
+                                            placeholder="Optional input placeholder text..."
+                                            className="h-8 text-xs bg-background flex-1"
+                                        />
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={handleAddCustomField}
+                                            className="h-8 text-xs gap-1 font-medium shrink-0"
+                                        >
+                                            <Plus className="w-3 h-3" />
+                                            Add Attribute
+                                        </Button>
                                     </div>
                                 </div>
                             </div>

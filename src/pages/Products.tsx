@@ -14,8 +14,10 @@ import {
   CheckCircle2,
   ArrowRight,
   AlertCircle,
+  Boxes,
 } from "lucide-react";
 import ProductForm, { ProductFormData } from "@/components/products/ProductForm";
+import { ProductVariantsDialog } from "@/components/products/ProductVariantsDialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,12 +53,21 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTenant } from "@/contexts/TenantContext";
 
 const Products = () => {
+  const { lexicon } = useTenant();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [isVariantDialogOpen, setIsVariantDialogOpen] = useState(false);
+  const [selectedVariantProduct, setSelectedVariantProduct] = useState<any>(null);
+
+  const openVariantDialog = (product: any) => {
+    setSelectedVariantProduct(product);
+    setIsVariantDialogOpen(true);
+  };
 
   // Edit Stocks mode
   const [isEditStocksMode, setIsEditStocksMode] = useState(false);
@@ -78,6 +89,7 @@ const Products = () => {
     meters_per_piece: "",
     stock_quantity: "",
     min_stock_level: "",
+    metadata: {},
   });
 
   // Database hooks
@@ -100,6 +112,7 @@ const Products = () => {
       meters_per_piece: "",
       stock_quantity: "",
       min_stock_level: "",
+      metadata: {},
     });
   }, []);
 
@@ -229,6 +242,7 @@ const Products = () => {
         meters_per_piece: formData.meters_per_piece ? parseFloat(formData.meters_per_piece) : 0,
         stock_quantity: formData.stock_quantity ? parseInt(formData.stock_quantity) : 0,
         min_stock_level: formData.min_stock_level ? parseInt(formData.min_stock_level) : 5,
+        metadata: formData.metadata || {},
       });
 
       setIsAddDialogOpen(false);
@@ -257,6 +271,7 @@ const Products = () => {
         meters_per_piece: formData.meters_per_piece ? parseFloat(formData.meters_per_piece) : 0,
         stock_quantity: formData.stock_quantity ? parseInt(formData.stock_quantity) : 0,
         min_stock_level: formData.min_stock_level ? parseInt(formData.min_stock_level) : 5,
+        metadata: formData.metadata || {},
       });
       setIsEditDialogOpen(false);
       setEditingProduct(null);
@@ -294,6 +309,7 @@ const Products = () => {
       meters_per_piece: product.meters_per_piece?.toString() || "",
       stock_quantity: product.stock_quantity?.toString() || "",
       min_stock_level: product.min_stock_level?.toString() || "",
+      metadata: product.metadata || {},
     });
     setIsEditDialogOpen(true);
   };
@@ -327,7 +343,7 @@ const Products = () => {
         <div>
           <h1 className="text-xl md:text-2xl font-semibold text-foreground">Products</h1>
           <p className="text-muted-foreground text-xs md:text-sm">
-            Manage your unstitched suits catalog ({products.length} products)
+            Manage your {lexicon.item_plural.toLowerCase()} catalog ({products.length} {lexicon.item_plural.toLowerCase()})
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -380,13 +396,13 @@ const Products = () => {
             <DialogTrigger asChild>
               <Button size="sm" className="flex-1 sm:flex-none" disabled={isEditStocksMode}>
                 <Plus className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Add </span>Product
+                <span className="hidden sm:inline">Add </span>{lexicon.item_singular}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Add New Suit</DialogTitle>
-                <DialogDescription>Enter the suit details.</DialogDescription>
+                <DialogTitle>Add New {lexicon.item_singular}</DialogTitle>
+                <DialogDescription>Enter the {lexicon.item_singular.toLowerCase()} details.</DialogDescription>
               </DialogHeader>
               <ProductForm
                 formData={formData}
@@ -433,10 +449,14 @@ const Products = () => {
               <TableHead className="text-muted-foreground">Product</TableHead>
               <TableHead className="text-muted-foreground">Product ID</TableHead>
               <TableHead className="text-muted-foreground">Category</TableHead>
-              <TableHead className="text-muted-foreground">Price/Suit</TableHead>
-              <TableHead className="text-muted-foreground">Meters/Suit</TableHead>
+              <TableHead className="text-muted-foreground">Price/{lexicon.item_singular}</TableHead>
+              {lexicon.enable_secondary_metric && (
+                <TableHead className="text-muted-foreground">
+                  {lexicon.secondary_metric_name || "Meters"}/{lexicon.item_singular}
+                </TableHead>
+              )}
               <TableHead className="text-muted-foreground">
-                {isEditStocksMode ? "Adjust Stock" : "Stock (Suits)"}
+                {isEditStocksMode ? "Adjust Stock" : `Stock (${lexicon.item_plural})`}
               </TableHead>
               <TableHead className="text-muted-foreground w-12"></TableHead>
             </TableRow>
@@ -444,7 +464,7 @@ const Products = () => {
           <TableBody>
             {filteredProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={lexicon.enable_secondary_metric ? 7 : 6} className="text-center text-muted-foreground py-8">
                   {searchTerm
                     ? "No products match your search"
                     : "No products yet. Add your first product above."}
@@ -459,10 +479,39 @@ const Products = () => {
                   <TableRow key={product.id} className="hover:bg-muted/50">
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <Package className="w-5 h-5 text-primary" />
                         </div>
-                        <span className="font-medium text-foreground">{product.name}</span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{product.name}</span>
+                            {product.has_variants && (
+                              <Badge
+                                variant="outline"
+                                className="cursor-pointer bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 gap-1 text-[10px] py-0 px-1.5 font-medium transition-colors"
+                                onClick={() => openVariantDialog(product)}
+                                title="Manage product variants"
+                              >
+                                <Boxes className="w-2.5 h-2.5" /> Variants
+                              </Badge>
+                            )}
+                          </div>
+                          {product.metadata && typeof product.metadata === 'object' && Object.keys(product.metadata).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {Object.entries(product.metadata).slice(0, 4).map(([k, v]) => {
+                                if (v === null || v === undefined || v === "") return null;
+                                return (
+                                  <span
+                                    key={k}
+                                    className="inline-flex items-center text-[10px] bg-muted/80 text-muted-foreground px-1.5 py-0.5 rounded border border-border/60"
+                                  >
+                                    <span className="font-semibold capitalize mr-1">{k.replace(/_/g, ' ')}:</span> {String(v)}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground font-mono text-sm">
@@ -478,9 +527,11 @@ const Products = () => {
                     <TableCell className="font-medium text-foreground">
                       Rs. {product.price.toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {product.meters_per_piece || "-"} m
-                    </TableCell>
+                    {lexicon.enable_secondary_metric && (
+                      <TableCell className="text-muted-foreground">
+                        {product.meters_per_piece || "-"} {lexicon.secondary_metric_symbol || "m"}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {isEditStocksMode ? (
                         /* Inline stock adjustment controls */
@@ -554,6 +605,10 @@ const Products = () => {
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openVariantDialog(product)}>
+                            <Boxes className="w-4 h-4 mr-2 text-primary" />
+                            Manage Variants
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => handleDeleteProduct(product)}
@@ -614,25 +669,27 @@ const Products = () => {
           </DialogHeader>
 
           {/* Metric Highlights */}
-          <div className="grid grid-cols-3 gap-3 my-4">
+          <div className={`grid ${lexicon.enable_secondary_metric ? 'grid-cols-3' : 'grid-cols-2'} gap-3 my-4`}>
             <div className="bg-muted/50 border border-border/80 rounded-xl p-3 text-center">
               <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-0.5">Modified Items</span>
-              <span className="text-base sm:text-lg font-bold text-foreground">{modifiedItemsList.length} Products</span>
+              <span className="text-base sm:text-lg font-bold text-foreground">{modifiedItemsList.length} {lexicon.item_plural}</span>
             </div>
 
             <div className="bg-muted/50 border border-border/80 rounded-xl p-3 text-center">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-0.5">Net Suit Change</span>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-0.5">Net {lexicon.item_singular} Change</span>
               <span className={`text-base sm:text-lg font-bold ${totalNetSuitDelta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                {totalNetSuitDelta > 0 ? `+${totalNetSuitDelta}` : totalNetSuitDelta} Suits
+                {totalNetSuitDelta > 0 ? `+${totalNetSuitDelta}` : totalNetSuitDelta} {lexicon.item_plural}
               </span>
             </div>
 
-            <div className="bg-muted/50 border border-border/80 rounded-xl p-3 text-center">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-0.5">Meters Impact</span>
-              <span className={`text-base sm:text-lg font-bold ${totalMetersDelta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
-                {totalMetersDelta > 0 ? `+${totalMetersDelta.toFixed(1)}` : totalMetersDelta.toFixed(1)} m
-              </span>
-            </div>
+            {lexicon.enable_secondary_metric && (
+              <div className="bg-muted/50 border border-border/80 rounded-xl p-3 text-center">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block mb-0.5">{lexicon.secondary_metric_name || "Meters"} Impact</span>
+                <span className={`text-base sm:text-lg font-bold ${totalMetersDelta >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>
+                  {totalMetersDelta > 0 ? `+${totalMetersDelta.toFixed(1)}` : totalMetersDelta.toFixed(1)} {lexicon.secondary_metric_symbol || "m"}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Items Summary Table */}
@@ -655,9 +712,9 @@ const Products = () => {
                     {delta > 0 ? `+${delta}` : delta}
                   </Badge>
 
-                  {metersDelta !== 0 && (
+                  {lexicon.enable_secondary_metric && metersDelta !== 0 && (
                     <span className="text-[11px] text-muted-foreground hidden sm:inline-block w-16 text-right font-medium">
-                      ({metersDelta > 0 ? `+${metersDelta.toFixed(1)}` : metersDelta.toFixed(1)}m)
+                      ({metersDelta > 0 ? `+${metersDelta.toFixed(1)}` : metersDelta.toFixed(1)}{lexicon.secondary_metric_symbol || "m"})
                     </span>
                   )}
                 </div>
@@ -697,6 +754,16 @@ const Products = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Product Variants Management Dialog */}
+      <ProductVariantsDialog
+        product={selectedVariantProduct}
+        isOpen={isVariantDialogOpen}
+        onClose={() => {
+          setIsVariantDialogOpen(false);
+          setSelectedVariantProduct(null);
+        }}
+      />
     </div>
   );
 };

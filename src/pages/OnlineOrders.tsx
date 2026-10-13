@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import TcsLiveTrackingModal from "@/components/tracking/TcsLiveTrackingModal";
+import { useTenant } from "@/contexts/TenantContext";
 
 interface OnlineOrder {
   id: string;
@@ -70,6 +71,7 @@ interface OnlineOrder {
 }
 
 export default function OnlineOrders() {
+  const { lexicon } = useTenant();
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -565,17 +567,21 @@ export default function OnlineOrders() {
                                                   )}
                                                   <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                                                     <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-md font-medium">
-                                                      {it.suits_quantity || 1} Suit(s)
+                                                      {it.suits_quantity || 1} {lexicon.item_singular}
                                                     </span>
                                                     {it.selected_color && (
                                                       <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-md font-semibold text-xs border border-emerald-500/20">
                                                         🎨 Color: {it.selected_color}
                                                       </span>
                                                     )}
-                                                    <span>•</span>
-                                                    <span>
-                                                      {mPerSuit}m / suit ({totMeters}m total)
-                                                    </span>
+                                                    {lexicon.enable_secondary_metric && (
+                                                      <>
+                                                        <span>•</span>
+                                                        <span>
+                                                          {mPerSuit}{lexicon.secondary_metric_symbol || 'm'} / {lexicon.item_singular.toLowerCase()} ({totMeters}{lexicon.secondary_metric_symbol || 'm'} total)
+                                                        </span>
+                                                      </>
+                                                    )}
                                                   </div>
                                                 </div>
                                                 <div className="text-right">
@@ -584,7 +590,7 @@ export default function OnlineOrders() {
                                                   </div>
                                                   {it.price_per_suit && (
                                                     <div className="text-[11px] text-muted-foreground">
-                                                      @ Rs. {it.price_per_suit.toLocaleString()} / suit
+                                                      @ Rs. {it.price_per_suit.toLocaleString()} / {lexicon.item_singular.toLowerCase()}
                                                     </div>
                                                   )}
                                                 </div>
@@ -775,14 +781,14 @@ export default function OnlineOrders() {
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2">Ordered Suit Items</h4>
+                <h4 className="font-semibold mb-2">Ordered {lexicon.item_singular} Items</h4>
                 <div className="space-y-2 border border-border rounded-lg p-3">
                   {selectedOrder.items?.map((it: any) => (
                     <div key={it.id} className="flex justify-between border-b border-border/50 pb-1.5 last:pb-0 last:border-none">
                       <div>
-                        <div className="font-medium text-foreground">{it.product?.name || "Fabric Suit"}</div>
+                        <div className="font-medium text-foreground">{it.product?.name || `${lexicon.item_singular}`}</div>
                         <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                          <span>{it.suits_quantity} Suit(s) • {it.total_meters} Meters</span>
+                          <span>{it.suits_quantity} {lexicon.item_singular}(s){lexicon.enable_secondary_metric ? ` • ${it.total_meters} ${lexicon.secondary_metric_symbol || "Meters"}` : ""}</span>
                           {it.selected_color && (
                             <span className="font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-xs">
                               [{it.selected_color}]

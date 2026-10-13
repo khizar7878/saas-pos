@@ -41,6 +41,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { supabase } from "@/integrations/supabase/client";
 import { warehouseSupabase } from "@/lib/warehouseSupabase";
 import { toast } from "sonner";
+import { useTenant } from "@/contexts/TenantContext";
 
 const WarehouseLinks = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,6 +54,7 @@ const WarehouseLinks = () => {
 
   const queryClient = useQueryClient();
   const { data: retailProducts = [], isLoading: loadingRetail, error: retailError } = useProducts();
+  const { lexicon } = useTenant();
 
   // 1. Fetch warehouse products from the central database
   const { data: warehouseProducts = [], isLoading: loadingWarehouseProducts } = useQuery({
@@ -512,7 +514,7 @@ const WarehouseLinks = () => {
             {/* 2. Variation Selector */}
             <div className="grid gap-2">
               <label className="text-sm font-medium text-foreground">
-                Product Variation (Meters per Suit) *
+                Product Variation {lexicon.enable_secondary_metric ? `(${lexicon.secondary_metric_name || "Meters"} per ${lexicon.item_singular})` : `(${lexicon.item_singular})`} *
               </label>
               <Select
                 value={selectedVariationId}

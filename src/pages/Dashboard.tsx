@@ -21,18 +21,16 @@ import { usePermissions } from "@/contexts/PermissionsContext";
 const Dashboard = () => {
   const navigate = useNavigate();
   const { data: stats } = useDashboardStats();
-  const { allowedRoutes, isAdmin, loading: permissionsLoading } = usePermissions();
+  const { allowedRoutes, isAdmin, hasRouteAccess, loading: permissionsLoading } = usePermissions();
 
-  const hasDashboardAccess = isAdmin || allowedRoutes.some(r => r.path === '/');
+  const hasDashboardAccess = isAdmin || hasRouteAccess('/') || allowedRoutes.some(r => r.path === '/');
 
   useEffect(() => {
     if (!permissionsLoading && !hasDashboardAccess) {
       if (allowedRoutes.length > 0) {
         navigate(allowedRoutes[0].path);
       } else {
-        // If no routes allowed at all, maybe redirect to auth or show unauthorized
-        // For now, we'll just let them stare at nothing or go to auth
-        // navigate('/auth'); // Careful of loops if auth redirects here
+        navigate('/pos/sales');
       }
     }
   }, [permissionsLoading, hasDashboardAccess, allowedRoutes, navigate]);

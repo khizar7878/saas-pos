@@ -307,9 +307,10 @@ The Superadmin Portal is accessible only to platform administrators (`user_profi
    - Filter by subscription status (`active`, `trialing`, `suspended`, `cancelled`).
    - Filter by FBR mode (`sandbox`, `production`).
    - Quick 1-click FBR toggle directly in table rows (`🧪 Sandbox` $\longleftrightarrow$ `🟢 Production`).
-3. **1-Click Tenant Provisioning Wizard**:
-   - Fields: Store Name, Slug (auto-slugified), Owner Email, Phone, City, NTN/STRN, Subscription Tier, Initial FBR Mode, POS ID, and Feature Flags.
-   - Automatically provisions `stores` record, `store_settings` record, and sequential counters in under 60 seconds.
+3. **End-to-End Tenant & Owner Provisioning Wizard (`provision_tenant_store`)**:
+   - Fields: Store Name, Slug (auto-slugified), Owner Name, Owner Email, Initial Owner Password (with random generator & visibility toggle), Phone, City, NTN/STRN, Subscription Tier, Initial FBR Mode, POS ID, and Feature Flags.
+   - Atomically provisions `stores`, `store_settings`, `sequences`, default Cash in Hand and Bank accounts in `accounts`, default category, GoTrue auth user in `auth.users`, identity in `auth.identities`, user profile with `role = 'owner'`, and all 16 operational route permissions.
+   - Displays a post-provisioning **Credentials Modal** with 1-click clipboard copy and a direct "Switch to Store Workspace Now" button.
 4. **Modular Feature Flag Matrix**:
    - Per-store licensing toggles:
      - `fbr_integration`: FBR Fiscalization dashboard and auto-submit.
@@ -381,7 +382,50 @@ Build output produces minified assets in `dist/` with 0 TypeScript errors.
 
 ---
 
-## 11. Codebase Isolation & Safety Rules
+## 11. Dynamic Retail Architecture & Industry Archetypes
+
+The SaaS POS features an extensible retail archetype and dynamic terminology engine (`src/config/industryArchetypes.ts`), allowing stores beyond traditional fabric retailers to operate with natural terminology and metrics:
+
+### 11.1 Supported Retail Archetypes
+1. **General Retail & Supermarket** (`general_retail`): Standard barcode retail, items/pcs, secondary metric disabled.
+2. **Textiles & Unstitched Suits** (`fabrics`): Suit counts with cut meterage (e.g. 4m or 4.5m per suit).
+3. **Cut-to-Order Fabrics & Drapery** (`fabric_rolls`): Continuous roll inventory sold by the exact cut meter (fractional quantities enabled).
+4. **Fashion Apparel & Boutiques** (`apparel`): Articles, ready-to-wear garments, sizes/colors, secondary metric disabled.
+5. **Footwear & Shoes** (`footwear`): Sold by pairs and size variants.
+6. **Electronics, Mobile & Tech** (`electronics`): Devices and gadgets with specifications and warranties.
+7. **Grocery & Weighing Scale** (`grocery`): Produce and bulk goods sold by weight (kg) with decimal fractional quantities.
+
+### 11.2 Store Lexicon Configuration (`store_settings.lexicon`)
+Stores configure their dynamic lexicon via `store_settings`:
+```json
+{
+  "item_singular": "Suit",
+  "item_plural": "Suits",
+  "primary_unit": "suits",
+  "secondary_metric_name": "Meters",
+  "secondary_metric_symbol": "m",
+  "enable_secondary_metric": true,
+  "allow_fractional_qty": false
+}
+```
+When `enable_secondary_metric` is `false`, the POS, Catalog, Inventory, and Stock Reports automatically hide fabric-specific measurement columns and computations, providing a clean, general-retail experience.
+
+### 11.3 Extensible Product Attributes (`products.metadata` & `store_settings.custom_product_fields`)
+Stores can define arbitrary specifications (e.g., Brand, Fabric Type, Season, Pana, Expiry Date, Warranty):
+- Dynamic form rendering via `ProductForm.tsx`.
+- GIN indexed JSONB storage in `products.metadata`.
+- Visual custom attribute manager in `StoreSettings.tsx` with 1-click archetype preset quick-fills.
+
+### 11.4 Universal Multi-Axis Variant Matrix (`public.product_variants`)
+Replaces single-color swatches with a full multi-dimensional variant architecture:
+- Dimensions: `size`, `color_name` (optional), `title`, `sku`, `barcode`, `price` override, and `stock_quantity`.
+- **Combinatorial Matrix Generator**: In `ProductVariantsDialog.tsx`, generates combinations (e.g. Sizes S, M, L $\times$ Colors Black, White $\rightarrow$ 6 variants) in 1 click with auto-generated SKUs.
+- **POS 1-Click Variant Selector**: Tapping multi-variant items in `/pos/sales` opens `PosVariantSelectorModal.tsx` for immediate size/color checkout. Barcode scanning automatically matches variant-level barcodes.
+- **Atomic Stock Deduction**: `process_sale_transaction` automatically deducts variant inventory alongside parent product inventory.
+
+---
+
+## 12. Codebase Isolation & Safety Rules
 
 1. **Strict Production Isolation**: Under no circumstances should `/Users/khizar/Documents/React/ak-retail-pos` or its database `lhalnbpcaphhszjliavr` be modified or written to.
 2. **No Auto-Push**: Do not execute `git push` to remote repositories unless explicitly instructed by the user.

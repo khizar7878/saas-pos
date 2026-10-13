@@ -22,6 +22,8 @@ export interface StoreSettings {
     fbr_api_url: string;
     fbr_environment: 'sandbox' | 'production';
     weekly_off_days?: string[] | null;
+    lexicon?: any;
+    custom_product_fields?: any;
 }
 
 const DEMO_STORE_ID = "11111111-1111-1111-1111-111111111111";

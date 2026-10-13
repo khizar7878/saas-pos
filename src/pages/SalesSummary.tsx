@@ -257,7 +257,7 @@ const SalesSummary = () => {
 
     // Search filter
     const matchesSearch = (item.sale_number || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.customer?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.customer?.name || (item as any).customer_name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       ((item as any).invoice_ref || "").toLowerCase().includes(searchTerm.toLowerCase());
 
     if (!matchesSearch) return false;
@@ -691,7 +691,7 @@ const SalesSummary = () => {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
-                  {item.customer?.name || "Walk-in"}
+                  {item.customer?.name || (item as any).customer_name || "Walk-in"}
                 </span>
                 <span className={cn(
                   "font-semibold",
@@ -811,7 +811,7 @@ const SalesSummary = () => {
                     ) : '-'}
                   </TableCell>
                   <TableCell className="text-foreground">
-                    {item.customer?.name || "Walk-in"}
+                    {item.customer?.name || (item as any).customer_name || "Walk-in"}
                   </TableCell>
                   <TableCell className="text-foreground uppercase text-sm">
                     {renderPaymentMethod(item)}

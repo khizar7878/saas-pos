@@ -169,13 +169,24 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
     if (!userProfile.is_active) return false;
     if (isAdmin) return true;
     
-    return allowedRoutes.some(route => {
-      // Exact match
-      if (route.path === path) return true;
-      // Check if it's a sub-route (e.g., /inventory matches /inventory/products)
-      if (path.startsWith(route.path + '/')) return true;
-      return false;
-    });
+    // Root dashboard is always accessible to active store staff
+    if (path === '/' || path === '') return true;
+
+    // If explicit routes exist in user_route_permissions, enforce them
+    if (allowedRoutes.length > 0) {
+      return allowedRoutes.some(route => {
+        // Exact match
+        if (route.path === path) return true;
+        // Check if it's a sub-route (e.g., /inventory matches /inventory/products)
+        if (path.startsWith(route.path + '/')) return true;
+        return false;
+      });
+    }
+
+    // Default fallback for staff members who don't have custom route restrictions:
+    // Cashiers and staff get standard operational till and sales routes
+    const defaultStaffRoutes = ['/', '/pos/sales', '/pos/returns', '/customers', '/pos/pending-payments'];
+    return defaultStaffRoutes.includes(path);
   };
 
   const refreshPermissions = async () => {

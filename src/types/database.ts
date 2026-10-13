@@ -29,6 +29,8 @@ export interface Database {
           updated_at: string
           warehouse_product_id: string | null
           warehouse_variation_id: string | null
+          metadata?: Record<string, any> | null
+          has_variants?: boolean
         }
         Insert: {
           id?: string
@@ -48,6 +50,8 @@ export interface Database {
           updated_at?: string
           warehouse_product_id?: string | null
           warehouse_variation_id?: string | null
+          metadata?: Record<string, any> | null
+          has_variants?: boolean
         }
         Update: {
           id?: string
@@ -67,6 +71,8 @@ export interface Database {
           updated_at?: string
           warehouse_product_id?: string | null
           warehouse_variation_id?: string | null
+          metadata?: Record<string, any> | null
+          has_variants?: boolean
         }
       }
       product_categories: {
@@ -165,6 +171,7 @@ export interface Database {
           id: string
           sale_id: string
           product_id: string
+          variant_id?: string | null
           product_name: string
           quantity: number
           unit_price: number
@@ -180,6 +187,7 @@ export interface Database {
           id?: string
           sale_id: string
           product_id: string
+          variant_id?: string | null
           product_name: string
           quantity: number
           unit_price: number
@@ -195,6 +203,7 @@ export interface Database {
           id?: string
           sale_id?: string
           product_id?: string
+          variant_id?: string | null
           product_name?: string
           quantity?: number
           quantity_returned?: number
@@ -522,11 +531,68 @@ export interface Database {
           sale_id?: string | null
         }
       }
+      product_variants: {
+        Row: {
+          id: string
+          product_id: string
+          title: string | null
+          color_name: string | null
+          color_hex: string | null
+          size: string | null
+          sku: string | null
+          barcode: string | null
+          price: number | null
+          cost_price: number | null
+          stock_quantity: number
+          variant_image_url: string | null
+          is_available: boolean
+          attributes?: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          title?: string | null
+          color_name?: string | null
+          color_hex?: string | null
+          size?: string | null
+          sku?: string | null
+          barcode?: string | null
+          price?: number | null
+          cost_price?: number | null
+          stock_quantity?: number
+          variant_image_url?: string | null
+          is_available?: boolean
+          attributes?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          title?: string | null
+          color_name?: string | null
+          color_hex?: string | null
+          size?: string | null
+          sku?: string | null
+          barcode?: string | null
+          price?: number | null
+          cost_price?: number | null
+          stock_quantity?: number
+          variant_image_url?: string | null
+          is_available?: boolean
+          attributes?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }
 
 export type Product = Database['public']['Tables']['products']['Row'];
+export type ProductVariant = Database['public']['Tables']['product_variants']['Row'];
 export type Sale = Database['public']['Tables']['sales']['Row'];
 export type SaleItem = Database['public']['Tables']['sale_items']['Row'];
 export type Customer = Database['public']['Tables']['customers']['Row'];

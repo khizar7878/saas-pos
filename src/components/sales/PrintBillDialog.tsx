@@ -233,7 +233,7 @@ const PrintBillDialog = ({
                     Quotation / Estimate
                   </div>
                 )}
-                {(storeSettings?.fbr_environment === 'sandbox' || fbrInvoiceNumber?.startsWith('SANDBOX-')) && (
+                {Boolean(fbrInvoiceNumber && (storeSettings?.fbr_environment === 'sandbox' || fbrInvoiceNumber.startsWith('SANDBOX-'))) && (
                   <div className="text-[10px] font-bold tracking-wider text-center bg-black text-white px-2 py-0.5 rounded my-1 uppercase">
                     *** TRAINING / TEST INVOICE (SANDBOX) ***
                   </div>

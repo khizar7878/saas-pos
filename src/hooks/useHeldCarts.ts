@@ -3,26 +3,28 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { HeldCart } from "@/components/sales/HeldCartTabs";
+import { useTenant } from "@/contexts/TenantContext";
 
 export type PageType = 'sales' | 'forwarding';
 
 export const useHeldCarts = (pageType?: PageType) => {
     const queryClient = useQueryClient();
+    const { currentStore } = useTenant();
+    const storeId = currentStore?.id || localStorage.getItem('saas_active_store_id');
 
     const { data: heldCarts = [], isLoading } = useQuery({
-        queryKey: ["held_carts", pageType],
+        queryKey: ["held_carts", pageType, storeId],
         queryFn: async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return [];
 
             // Build query
             let query = supabase.from("held_carts").select("*");
-            // If pageType is 'sales' or undefined, we want:
-            // 1. Private holds (page_type=sales AND created_by=user)
-            // 2. Forwarded carts (page_type=forwarding) - visible to everyone
-            // 3. Assigned carts (assigned_to=user)
 
-            // If pageType is 'sales', show carts created by me OR assigned to me
+            if (storeId) {
+                query = query.eq('store_id', storeId);
+            }
+
             // If pageType is 'sales', show:
             // 1. Carts created by me AND NOT assigned to anyone (Private drafts)
             // 2. Carts assigned to me (Forwarded to me)
@@ -56,7 +58,7 @@ export const useHeldCarts = (pageType?: PageType) => {
 
     // Real-time updates subscription
     useEffect(() => {
-        const channelName = `held_carts_updates_${Date.now()}`; // Unique channel name per mount
+        const channelName = `held_carts_updates_${storeId || 'all'}_${Date.now()}`;
         console.log(`Setting up realtime subscription: ${channelName}`);
 
         const channel = supabase
@@ -69,12 +71,10 @@ export const useHeldCarts = (pageType?: PageType) => {
                     console.log('Refetching held_carts queries...');
 
                     // Immediately refetch all held_carts queries
-                    const result = await queryClient.refetchQueries({
+                    await queryClient.refetchQueries({
                         queryKey: ["held_carts"],
                         type: 'active'
                     });
-
-                    console.log('✅ Refetch completed:', result);
                 }
             )
             .subscribe((status) => {
@@ -85,7 +85,7 @@ export const useHeldCarts = (pageType?: PageType) => {
             console.log(`Cleaning up subscription: ${channelName}`);
             supabase.removeChannel(channel);
         };
-    }, [queryClient, pageType]);
+    }, [queryClient, pageType, storeId]);
 
     const createHeldCart = useMutation({
         mutationFn: async ({
@@ -115,17 +115,24 @@ export const useHeldCarts = (pageType?: PageType) => {
                 }
             }
 
+            const insertPayload: any = {
+                cart_name: customerName,
+                customer_id: customerId === "walk-in" ? null : customerId,
+                cart_data: items as any, // Json type
+                total_amount: subtotal,
+                assigned_to: assignedTo || null,
+                created_by: user.id,
+                user_id: user.id,
+                page_type: finalPageType
+            };
+
+            if (storeId) {
+                insertPayload.store_id = storeId;
+            }
+
             const { data, error } = await supabase
                 .from("held_carts")
-                .insert({
-                    cart_name: customerName,
-                    customer_id: customerId === "walk-in" ? null : customerId,
-                    cart_data: items as any, // Json type
-                    total_amount: subtotal,
-                    assigned_to: assignedTo || null,
-                    created_by: user.id,
-                    page_type: finalPageType
-                })
+                .insert(insertPayload)
                 .select()
                 .single();
 
@@ -133,7 +140,7 @@ export const useHeldCarts = (pageType?: PageType) => {
             return data;
         },
         onMutate: async (newCart) => {
-            const queryKey = ["held_carts", pageType];
+            const queryKey = ["held_carts", pageType, storeId];
             // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
             await queryClient.cancelQueries({ queryKey });
 
@@ -184,7 +191,7 @@ export const useHeldCarts = (pageType?: PageType) => {
             if (error) throw error;
         },
         onMutate: async (cartId) => {
-            const queryKey = ["held_carts", pageType];
+            const queryKey = ["held_carts", pageType, storeId];
             // Cancel any outgoing refetches
             await queryClient.cancelQueries({ queryKey });
 

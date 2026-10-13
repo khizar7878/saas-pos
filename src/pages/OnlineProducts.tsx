@@ -22,8 +22,10 @@ import {
 } from "@/components/ui/dialog";
 import { Store, Search, Edit, Upload, Sparkles, Image as ImageIcon, Trash2, Tag, Coins, Ruler, Calendar, CheckCircle2, X, Layers } from "lucide-react";
 import { toast } from "sonner";
+import { useTenant } from "@/contexts/TenantContext";
 
 export default function OnlineProducts() {
+  const { lexicon } = useTenant();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -297,8 +299,10 @@ export default function OnlineProducts() {
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
-                <TableHead>Suit Meterage</TableHead>
-                <TableHead>Suit Price (PKR)</TableHead>
+                {lexicon.enable_secondary_metric && (
+                  <TableHead>{lexicon.item_singular} {lexicon.secondary_metric_name || "Meterage"}</TableHead>
+                )}
+                <TableHead>{lexicon.item_singular} Price (PKR)</TableHead>
                 <TableHead>Live Online</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -307,13 +311,13 @@ export default function OnlineProducts() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={lexicon.enable_secondary_metric ? 5 : 4} className="text-center py-8 text-muted-foreground">
                     Loading products...
                   </TableCell>
                 </TableRow>
               ) : filteredProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={lexicon.enable_secondary_metric ? 5 : 4} className="text-center py-8 text-muted-foreground">
                     No products found.
                   </TableCell>
                 </TableRow>
@@ -330,9 +334,11 @@ export default function OnlineProducts() {
                         <div className="text-[11px] text-muted-foreground">{p.product_categories?.name || "Uncategorized"}</div>
                       </TableCell>
 
-                      <TableCell className="text-xs font-bold text-primary">
-                        {meters} Meters
-                      </TableCell>
+                      {lexicon.enable_secondary_metric && (
+                        <TableCell className="text-xs font-bold text-primary">
+                          {meters} {lexicon.secondary_metric_symbol || "Meters"}
+                        </TableCell>
+                      )}
 
                       <TableCell className="font-bold text-sm text-emerald-600">
                         Rs. {calculatedSuitPrice.toLocaleString()}
@@ -422,9 +428,9 @@ export default function OnlineProducts() {
                       </div>
                     </div>
 
-                    <div>
+                    <div className={lexicon.enable_secondary_metric ? "" : "sm:col-span-2"}>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                        Price Per Suit (PKR) *
+                        Price Per {lexicon.item_singular} (PKR) *
                       </label>
                       <div className="relative">
                         <Coins className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
@@ -437,21 +443,23 @@ export default function OnlineProducts() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                        Meters Per Suit *
-                      </label>
-                      <div className="relative">
-                        <Ruler className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-                        <Input
-                          type="number"
-                          step="0.25"
-                          value={metersPerSuit}
-                          onChange={(e) => setMetersPerSuit(Number(e.target.value))}
-                          className="pl-10 h-10 text-xs sm:text-sm font-bold text-[#295975] rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#295975]/30 focus:border-[#295975]"
-                        />
+                    {lexicon.enable_secondary_metric && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                          {lexicon.secondary_metric_name || "Meters"} Per {lexicon.item_singular} *
+                        </label>
+                        <div className="relative">
+                          <Ruler className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                          <Input
+                            type="number"
+                            step="0.25"
+                            value={metersPerSuit}
+                            onChange={(e) => setMetersPerSuit(Number(e.target.value))}
+                            className="pl-10 h-10 text-xs sm:text-sm font-bold text-[#295975] rounded-xl border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#295975]/30 focus:border-[#295975]"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">

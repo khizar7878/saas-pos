@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
@@ -14,8 +14,11 @@ export interface EnabledModules {
   credit_sales?: boolean;
   online_store?: boolean;
   barcode_printing?: boolean;
-  [key: string]: boolean | undefined;
+  enabled_pages?: string[];
+  [key: string]: any;
 }
+
+import { StoreLexicon, DEFAULT_RETAIL_LEXICON, CustomProductField, getArchetypeById } from '@/config/industryArchetypes';
 
 export interface Store {
   id: string;
@@ -36,6 +39,7 @@ export interface Store {
   max_products?: number | null;
   fbr_environment: FbrEnvironment;
   enabled_modules: EnabledModules;
+  business_type?: string | null;
   owner_id?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -61,14 +65,19 @@ export interface StoreSettings {
   fbr_api_url: string;
   fbr_environment: FbrEnvironment;
   weekly_off_days?: string[] | null;
+  lexicon?: StoreLexicon | null;
+  custom_product_fields?: CustomProductField[] | null;
 }
 
 interface TenantContextType {
   currentStore: Store | null;
   storeSettings: StoreSettings | null;
+  lexicon: StoreLexicon;
+  customProductFields: CustomProductField[];
   fbrEnvironment: FbrEnvironment;
   setFbrEnvironment: (env: FbrEnvironment) => Promise<void>;
   isModuleEnabled: (moduleKey: string) => boolean;
+  isPageEnabled: (pagePath: string) => boolean;
   subscriptionStatus: SubscriptionStatus;
   isSuperAdmin: boolean;
   allStores: Store[];
@@ -234,12 +243,90 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [currentStore, isSuperAdmin]
   );
 
+  // Check if a specific page/route is enabled for current tenant
+  const isPageEnabled = useCallback(
+    (pagePath: string): boolean => {
+      if (!currentStore) return true;
+      if (isSuperAdmin) return true; // Superadmin has platform-wide god-mode access
+
+      // Hard FBR disengagement check: If fbr_integration is disabled, FBR page is always blocked
+      if (pagePath === '/setup/fbr' && currentStore.enabled_modules?.fbr_integration === false) {
+        return false;
+      }
+
+      // Root dashboard is always accessible to all tenant users
+      if (pagePath === '/' || pagePath === '') return true;
+
+      // 1. If store has explicit enabled_pages array, check it
+      const enabledPages = currentStore.enabled_modules?.enabled_pages;
+      if (Array.isArray(enabledPages) && enabledPages.length > 0) {
+        return enabledPages.includes(pagePath);
+      }
+
+      // 2. Backwards-compatible fallback to coarse module flags
+      if (pagePath.startsWith('/online-store') && currentStore.enabled_modules?.online_store === false) {
+        return false;
+      }
+      if (pagePath.startsWith('/order-book') && currentStore.enabled_modules?.online_store === false) {
+        return false;
+      }
+      if (pagePath.startsWith('/reconciliation') && currentStore.enabled_modules?.daily_reconciliation === false) {
+        return false;
+      }
+      if (pagePath === '/pos/pending-payments' && currentStore.enabled_modules?.credit_sales === false) {
+        return false;
+      }
+      if ((pagePath === '/barcodes' || pagePath === '/utilities/custom-labels') && currentStore.enabled_modules?.barcode_printing === false) {
+        return false;
+      }
+      if (pagePath === '/accounts' && currentStore.enabled_modules?.treasury_accounts === false) {
+        return false;
+      }
+
+      return true;
+    },
+    [currentStore, isSuperAdmin]
+  );
+
+  const lexicon: StoreLexicon = useMemo(() => {
+    if (storeSettings?.lexicon) {
+      return {
+        ...DEFAULT_RETAIL_LEXICON,
+        ...storeSettings.lexicon
+      };
+    }
+    // Backward compatibility for existing fabric demo store
+    if (currentStore?.slug === 'teststore' || currentStore?.business_type === 'fabrics') {
+      return {
+        item_singular: "Suit",
+        item_plural: "Suits",
+        primary_unit: "suits",
+        secondary_metric_name: "Meters",
+        secondary_metric_symbol: "m",
+        enable_secondary_metric: true,
+        allow_fractional_qty: false
+      };
+    }
+    return DEFAULT_RETAIL_LEXICON;
+  }, [storeSettings?.lexicon, currentStore?.slug, currentStore?.business_type]);
+
+  const customProductFields: CustomProductField[] = useMemo(() => {
+    if (storeSettings?.custom_product_fields && Array.isArray(storeSettings.custom_product_fields) && storeSettings.custom_product_fields.length > 0) {
+      return storeSettings.custom_product_fields;
+    }
+    const archetype = getArchetypeById(currentStore?.business_type);
+    return archetype.defaultCustomFields || [];
+  }, [storeSettings?.custom_product_fields, currentStore?.business_type]);
+
   const value: TenantContextType = {
     currentStore,
     storeSettings,
+    lexicon,
+    customProductFields,
     fbrEnvironment: currentStore?.fbr_environment || storeSettings?.fbr_environment || 'sandbox',
     setFbrEnvironment,
     isModuleEnabled,
+    isPageEnabled,
     subscriptionStatus: currentStore?.subscription_status || 'active',
     isSuperAdmin,
     allStores,

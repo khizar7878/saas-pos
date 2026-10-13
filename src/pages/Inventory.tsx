@@ -33,6 +33,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useTenant } from "@/contexts/TenantContext";
 
 const Inventory = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -47,6 +48,7 @@ const Inventory = () => {
 
   const queryClient = useQueryClient();
   const { data: products = [], isLoading, error } = useProducts();
+  const { lexicon } = useTenant();
 
   const filteredItems = products.filter(
     (p) =>
@@ -142,7 +144,7 @@ const Inventory = () => {
               <Package className="w-4 h-4 md:w-5 md:h-5 text-primary" />
             </div>
             <div>
-              <p className="text-xs md:text-sm text-muted-foreground">Total Suits</p>
+              <p className="text-xs md:text-sm text-muted-foreground">Total {lexicon.item_plural}</p>
               <p className="text-sm md:text-xl font-semibold text-foreground">
                 {totalSuits.toLocaleString()}
               </p>
@@ -166,7 +168,7 @@ const Inventory = () => {
               <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-success" />
             </div>
             <div>
-              <p className="text-xs md:text-sm text-muted-foreground">Products</p>
+              <p className="text-xs md:text-sm text-muted-foreground">{lexicon.item_plural}</p>
               <p className="text-sm md:text-xl font-semibold text-foreground">{products.length}</p>
             </div>
           </div>

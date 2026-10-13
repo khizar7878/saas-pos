@@ -114,14 +114,14 @@ export function AppSidebar() {
     setSignOutOpen(false);
   };
 
-  const { currentStore, isSuperAdmin, fbrEnvironment, isModuleEnabled } = useTenant();
+  const { currentStore, isSuperAdmin, fbrEnvironment, isModuleEnabled, isPageEnabled } = useTenant();
   const navigate = useNavigate();
 
-  // Filter items based on permissions and module flags
+  // Filter items based on staff permissions, module flags, and tenant page licensing
   const getFilteredSection = (section: NavSection) => {
     if (permissionsLoading) return { ...section, items: [] };
 
-    // Section-level module gating
+    // Section-level coarse module gating
     if (section.title === "Online Store" && !isModuleEnabled("online_store")) {
       return { ...section, items: [] };
     }
@@ -133,10 +133,13 @@ export function AppSidebar() {
     }
 
     const filteredItems = section.items.filter(item => {
+      // 1. Hard FBR disengagement check
       if (item.path === "/setup/fbr" && !isModuleEnabled("fbr_integration")) return false;
-      if ((item.path === "/barcodes" || item.path === "/utilities/custom-labels") && !isModuleEnabled("barcode_printing")) return false;
-      if (item.path === "/pos/pending-payments" && !isModuleEnabled("credit_sales")) return false;
 
+      // 2. Tenant Granular Page licensing check
+      if (!isPageEnabled(item.path)) return false;
+
+      // 3. Staff Role-based permissions check
       return hasRouteAccess(item.path);
     });
 

@@ -12,6 +12,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useReceiveStock } from "@/hooks/useStockReceiving";
 import { Product } from "@/types/database";
 import { printStockReceipt } from "@/components/stock/StockReceiptPrint";
+import { useTenant } from "@/contexts/TenantContext";
 
 interface ReceivingItem {
   id: string;
@@ -41,6 +42,7 @@ const StockReceiving = () => {
 
   const { data: products = [], isLoading } = useProducts();
   const receiveStock = useReceiveStock();
+  const { lexicon } = useTenant();
 
 
   useEffect(() => {
@@ -259,9 +261,11 @@ const StockReceiving = () => {
                       {scannedProduct.product.sku}
                     </p>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">
-                        {scannedProduct.product.meters_per_piece}m/suit
-                      </Badge>
+                      {lexicon.enable_secondary_metric && scannedProduct.product.meters_per_piece && (
+                        <Badge variant="secondary">
+                          {scannedProduct.product.meters_per_piece}{lexicon.secondary_metric_symbol || "m"}/{lexicon.item_singular}
+                        </Badge>
+                      )}
                       <Badge variant="outline">
                         {scannedProduct.product.stock_quantity} in stock
                       </Badge>
@@ -272,7 +276,7 @@ const StockReceiving = () => {
                 {/* Quantity Input */}
                 <div className="flex items-center gap-3">
                   <label className="text-sm font-medium text-foreground whitespace-nowrap">
-                    Quantity (suits):
+                    Quantity ({lexicon.item_plural.toLowerCase()}):
                   </label>
                   <Input
                     ref={quantityInputRef}
@@ -359,7 +363,8 @@ const StockReceiving = () => {
                             {item.sku}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            {item.quantity} suits × {item.metersPerPiece}m = {(item.quantity * item.metersPerPiece).toFixed(2)}m
+                            {item.quantity} {lexicon.item_plural.toLowerCase()}
+                            {lexicon.enable_secondary_metric && item.metersPerPiece ? ` × ${item.metersPerPiece}${lexicon.secondary_metric_symbol || 'm'} = ${(item.quantity * item.metersPerPiece).toFixed(2)}${lexicon.secondary_metric_symbol || 'm'}` : ''}
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
@@ -410,13 +415,15 @@ const StockReceiving = () => {
         <div className="border-t border-border p-4 space-y-4">
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Total Suits</span>
+              <span className="text-muted-foreground">Total {lexicon.item_plural}</span>
               <span className="text-foreground font-medium">{totalquantity}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Total Meters</span>
-              <span className="text-foreground font-medium">{totalMeters.toLocaleString()}m</span>
-            </div>
+            {lexicon.enable_secondary_metric && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total {lexicon.secondary_metric_name || "Meters"}</span>
+                <span className="text-foreground font-medium">{totalMeters.toLocaleString()}{lexicon.secondary_metric_symbol || "m"}</span>
+              </div>
+            )}
           </div>
           <Button
             className="w-full"
@@ -440,7 +447,10 @@ const StockReceiving = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-foreground">{receivingCart.length} items</p>
-                <p className="text-xs text-muted-foreground">{totalquantity} suits • {totalMeters}m</p>
+                <p className="text-xs text-muted-foreground">
+                  {totalquantity} {lexicon.item_plural.toLowerCase()}
+                  {lexicon.enable_secondary_metric ? ` • ${totalMeters}${lexicon.secondary_metric_symbol || 'm'}` : ''}
+                </p>
               </div>
               <Button
                 size="sm"

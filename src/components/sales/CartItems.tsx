@@ -4,10 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
+import { useTenant } from "@/contexts/TenantContext";
 
 export interface CartItem {
   id: string;
   productId: string;
+  variantId?: string;
+  variantTitle?: string;
   productName: string;
   sku: string;
   price: number;
@@ -75,6 +78,7 @@ const CartQuantityInput = ({ quantity, onUpdate }: { quantity: number, onUpdate:
 };
 
 const CartItems = ({ items, onUpdateQuantity, onRemove }: CartItemsProps) => {
+  const { lexicon } = useTenant();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // Group items by product
@@ -134,7 +138,7 @@ const CartItems = ({ items, onUpdateQuantity, onRemove }: CartItemsProps) => {
           </CardTitle>
           <div className="flex gap-2">
             <Badge variant="outline" className="text-lg px-3 py-1">{items.length} items</Badge>
-            <Badge variant="secondary" className="text-lg px-3 py-1">{items.reduce((acc, item) => acc + item.quantity, 0)} pcs</Badge>
+            <Badge variant="secondary" className="text-lg px-3 py-1">{items.reduce((acc, item) => acc + item.quantity, 0)} {lexicon.primary_unit}</Badge>
           </div>
         </div>
       </CardHeader>
@@ -176,13 +180,18 @@ const CartItems = ({ items, onUpdateQuantity, onRemove }: CartItemsProps) => {
                         key={item.id}
                         className="flex items-center gap-2 text-sm"
                       >
-                        <div className="flex-1 min-w-0 flex items-center gap-2">
-                          <span className="text-muted-foreground">
+                        <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+                          {item.variantTitle && (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-medium bg-muted/60 border-primary/30 text-primary">
+                              {item.variantTitle}
+                            </Badge>
+                          )}
+                          <span className="text-muted-foreground text-xs">
                             Qty:
                           </span>
-                          <span className="font-medium ml-1">{item.quantity}</span>
+                          <span className="font-medium text-xs ml-0.5">{item.quantity}</span>
 
-                          <span className="text-xs text-muted-foreground ml-2">
+                          <span className="text-xs text-muted-foreground ml-1">
                             = Rs. {(item.unitPrice * item.quantity).toLocaleString()}
                           </span>
                         </div>

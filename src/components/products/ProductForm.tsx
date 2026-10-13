@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
+import { useTenant } from "@/contexts/TenantContext";
 
 interface ProductFormData {
   name: string;
@@ -22,6 +23,7 @@ interface ProductFormData {
   meters_per_piece: string;
   stock_quantity: string;
   min_stock_level: string;
+  metadata?: Record<string, any>;
 }
 
 interface Category {
@@ -48,6 +50,7 @@ const ProductForm = ({
   isLoading,
   submitLabel,
 }: ProductFormProps) => {
+  const { lexicon, customProductFields } = useTenant();
 
   return (
     <>
@@ -128,9 +131,9 @@ const ProductForm = ({
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className={`grid ${lexicon.enable_secondary_metric ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
           <div className="grid gap-2">
-            <Label htmlFor="stock">Initial Stock (Suits)</Label>
+            <Label htmlFor="stock">Initial Stock ({lexicon.item_plural})</Label>
             <Input
               id="stock"
               type="number"
@@ -139,17 +142,19 @@ const ProductForm = ({
               onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="meters">Meters per Suit</Label>
-            <Input
-              id="meters"
-              type="number"
-              placeholder="e.g. 4.5"
-              step="0.1"
-              value={formData.meters_per_piece}
-              onChange={(e) => setFormData({ ...formData, meters_per_piece: e.target.value })}
-            />
-          </div>
+          {lexicon.enable_secondary_metric && (
+            <div className="grid gap-2">
+              <Label htmlFor="meters">{lexicon.secondary_metric_name || "Meters"} per {lexicon.item_singular}</Label>
+              <Input
+                id="meters"
+                type="number"
+                placeholder="e.g. 4.5"
+                step="0.1"
+                value={formData.meters_per_piece}
+                onChange={(e) => setFormData({ ...formData, meters_per_piece: e.target.value })}
+              />
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="min_stock">Low Stock Alert</Label>
             <Input
@@ -161,6 +166,108 @@ const ProductForm = ({
             />
           </div>
         </div>
+
+        {/* Dynamic Custom Product Attributes */}
+        {customProductFields && customProductFields.length > 0 && (
+          <div className="rounded-lg border border-border bg-muted/20 p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Product Specifications & Attributes
+              </span>
+              <span className="text-[10px] text-muted-foreground bg-background px-1.5 py-0.5 rounded border border-border">
+                {customProductFields.length} {customProductFields.length === 1 ? 'field' : 'fields'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {customProductFields.map((field) => {
+                const val = formData.metadata?.[field.id] ?? "";
+
+                const handleChange = (newVal: any) => {
+                  setFormData({
+                    ...formData,
+                    metadata: {
+                      ...(formData.metadata || {}),
+                      [field.id]: newVal,
+                    },
+                  });
+                };
+
+                if (field.type === "select") {
+                  return (
+                    <div key={field.id} className="grid gap-1.5">
+                      <Label htmlFor={`meta_${field.id}`} className="text-xs font-medium">
+                        {field.name} {field.required && "*"}
+                      </Label>
+                      <Select value={String(val)} onValueChange={handleChange}>
+                        <SelectTrigger id={`meta_${field.id}`} className="h-9 text-sm">
+                          <SelectValue placeholder={`Select ${field.name}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(field.options || []).map((opt) => (
+                            <SelectItem key={opt} value={opt}>
+                              {opt}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                }
+
+                if (field.type === "number") {
+                  return (
+                    <div key={field.id} className="grid gap-1.5">
+                      <Label htmlFor={`meta_${field.id}`} className="text-xs font-medium">
+                        {field.name} {field.required && "*"}
+                      </Label>
+                      <Input
+                        id={`meta_${field.id}`}
+                        type="number"
+                        placeholder={field.placeholder || `Enter ${field.name}`}
+                        value={val}
+                        onChange={(e) => handleChange(e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  );
+                }
+
+                if (field.type === "date") {
+                  return (
+                    <div key={field.id} className="grid gap-1.5">
+                      <Label htmlFor={`meta_${field.id}`} className="text-xs font-medium">
+                        {field.name} {field.required && "*"}
+                      </Label>
+                      <Input
+                        id={`meta_${field.id}`}
+                        type="date"
+                        value={val}
+                        onChange={(e) => handleChange(e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={field.id} className="grid gap-1.5">
+                    <Label htmlFor={`meta_${field.id}`} className="text-xs font-medium">
+                      {field.name} {field.required && "*"}
+                    </Label>
+                    <Input
+                      id={`meta_${field.id}`}
+                      placeholder={field.placeholder || `Enter ${field.name}`}
+                      value={val}
+                      onChange={(e) => handleChange(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
       </div>
 

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { Search, ShoppingCart, Package, Printer, Trash2, Pause, Send, ArrowDownAZ, Clock, Shuffle, FileText } from "lucide-react";
+import { Search, ShoppingCart, Package, Printer, Trash2, Pause, Send, ArrowDownAZ, Clock, Shuffle, FileText, Boxes } from "lucide-react";
 import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,10 +16,13 @@ import UserSelectionDialog from "@/components/sales/UserSelectionDialog";
 import GridViewSelector, { GridLayout } from "@/components/sales/GridViewSelector";
 import HeldCartTabs, { HeldCart } from "@/components/sales/HeldCartTabs";
 import ShortcutBar from "@/components/sales/ShortcutBar";
+import { PosVariantSelectorModal } from "@/components/sales/PosVariantSelectorModal";
 import { cn } from "@/lib/utils";
 import { useProducts } from "@/hooks/useProducts";
 import { useCreateSale } from "@/hooks/useSales";
 import { useHeldCarts } from "@/hooks/useHeldCarts";
+import { supabase } from "@/integrations/supabase/client";
+import { ProductVariant } from "@/types/database";
 import { Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
@@ -72,6 +75,8 @@ const Sales = () => {
   const [printBillOpen, setPrintBillOpen] = useState(false);
   const [quotationOpen, setQuotationOpen] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
+  const [posVariantModalOpen, setPosVariantModalOpen] = useState(false);
+  const [selectedPosProduct, setSelectedPosProduct] = useState<any>(null);
 
   // Auto Print State
   const [autoPrint, setAutoPrint] = useState(() => localStorage.getItem("akws-auto-print") === "true");
@@ -189,56 +194,88 @@ const Sales = () => {
     }
   };
 
-  const addToCart = (product: any) => {
-    if (product.stock_quantity <= 0) {
-      toast.error("Item is out of stock!");
+  const addToCart = (product: any, variant?: ProductVariant) => {
+    const stockAvailable = variant ? (variant.stock_quantity ?? 0) : product.stock_quantity;
+    if (stockAvailable <= 0) {
+      toast.error(`${variant ? (variant.title || variant.color_name || 'Variant') : 'Item'} is out of stock!`);
       return;
     }
 
-    const cartItemId = product.id;
-    const existing = cart.find((item) => item.productId === product.id);
+    const cartItemId = variant ? `${product.id}_${variant.id}` : product.id;
+    const existing = cart.find((item) => item.id === cartItemId);
 
-    if (existing && existing.quantity >= product.stock_quantity) {
-      toast.error(`Cannot add more. Only ${product.stock_quantity} available.`);
+    if (existing && existing.quantity >= stockAvailable) {
+      toast.error(`Cannot add more. Only ${stockAvailable} available.`);
       return;
     }
+
+    const priceToUse = variant && variant.price != null ? variant.price : product.price;
 
     if (existing) {
       setCart(
         cart.map((item) =>
-          item.productId === product.id
+          item.id === cartItemId
             ? { ...item, quantity: item.quantity + 1 }
             : item
         )
       );
     } else {
-      setCart([...cart, {
-        id: cartItemId,
-        productId: product.id,
-        productName: product.name,
-        price: product.price,
-        unitPrice: product.price, // Same as price in simple model
-        quantity: 1,
-        stockQty: product.stock_quantity,
-        sku: product.sku,
-        taxRate: product.tax_rate || 0,
-        taxAmount: product.tax_rate ? (product.price - (product.price / (1 + product.tax_rate / 100))) : 0,
-        metersPerPiece: product.meters_per_piece || 0,
-        pctCode: product.pct_code
-      }]);
+      setCart([
+        ...cart,
+        {
+          id: cartItemId,
+          productId: product.id,
+          variantId: variant?.id,
+          variantTitle: variant?.title || variant?.color_name || undefined,
+          productName: product.name,
+          price: priceToUse,
+          unitPrice: priceToUse,
+          quantity: 1,
+          stockQty: stockAvailable,
+          sku: variant?.sku || product.sku,
+          taxRate: product.tax_rate || 0,
+          taxAmount: product.tax_rate
+            ? priceToUse - priceToUse / (1 + product.tax_rate / 100)
+            : 0,
+          metersPerPiece: product.meters_per_piece || 0,
+          pctCode: product.pct_code,
+        },
+      ]);
     }
+
     // Only show toast on desktop (md and above)
     if (window.innerWidth >= 768) {
-      toast.success(`Added ${product.name} to cart`);
+      toast.success(
+        `Added ${product.name}${variant ? ` (${variant.title || variant.color_name})` : ''} to cart`
+      );
     }
   };
 
-  const handleBarcodeScan = useCallback((barcode: string) => {
+  const handleBarcodeScan = useCallback(async (barcode: string) => {
+    // 1. Check exact variant barcode / SKU
+    const { data: matchedVariant } = await supabase
+      .from("product_variants")
+      .select("*, products(*)")
+      .or(`barcode.eq.${barcode},sku.eq.${barcode}`)
+      .eq("is_available", true)
+      .maybeSingle();
+
+    if (matchedVariant && (matchedVariant as any).products) {
+      addToCart((matchedVariant as any).products, matchedVariant as any);
+      return;
+    }
+
+    // 2. Check base product barcode / SKU
     const product = allProducts.find(
       (p) => p.sku === barcode || (p.barcode && p.barcode === barcode)
     );
     if (product) {
-      addToCart(product);
+      if (product.has_variants) {
+        setSelectedPosProduct(product);
+        setPosVariantModalOpen(true);
+      } else {
+        addToCart(product);
+      }
     } else {
       toast.error(`Product not found: ${barcode}`);
     }
@@ -436,7 +473,8 @@ const Sales = () => {
         },
         items: cart.map(item => ({
           product_id: item.productId,
-          product_name: item.productName,
+          variant_id: item.variantId || null,
+          product_name: item.variantTitle ? `${item.productName} (${item.variantTitle})` : item.productName,
           quantity: item.quantity,
           unit_price: item.unitPrice,
           total_price: item.unitPrice * item.quantity,
@@ -594,7 +632,14 @@ const Sales = () => {
               {filteredProducts.map((product) => (
                 <button
                   key={product.id}
-                  onClick={() => addToCart(product)}
+                  onClick={() => {
+                    if (product.has_variants) {
+                      setSelectedPosProduct(product);
+                      setPosVariantModalOpen(true);
+                    } else {
+                      addToCart(product);
+                    }
+                  }}
                   className="p-2.5 rounded-lg border border-border bg-card hover:border-primary hover:bg-primary/5 hover:shadow-md transition-all duration-300 group text-left select-none active:scale-[0.98] active:shadow-inner flex flex-col h-full relative overflow-hidden"
                 >
                   <div className="flex items-start gap-3 mb-2">
@@ -618,9 +663,15 @@ const Sales = () => {
                     </p>
 
                     <div className="flex items-center flex-wrap gap-1 mt-1.5 pointer-events-none">
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
-                        {product.stock_quantity} in stock
-                      </Badge>
+                      {product.has_variants ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-primary/10 text-primary border-primary/30">
+                          <Boxes className="w-2.5 h-2.5 mr-0.5" /> Variants
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5">
+                          {product.stock_quantity} in stock
+                        </Badge>
+                      )}
                       {product.meters_per_piece > 0 && (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
                           {product.meters_per_piece}m
@@ -649,7 +700,14 @@ const Sales = () => {
                     ref={desktopScannerRef}
                     onScan={handleBarcodeScan}
                     products={allProducts}
-                    onProductSelect={addToCart}
+                    onProductSelect={(product) => {
+                      if (product.has_variants) {
+                        setSelectedPosProduct(product);
+                        setPosVariantModalOpen(true);
+                      } else {
+                        addToCart(product);
+                      }
+                    }}
                   />
                 </div>
                 <Button
@@ -751,7 +809,14 @@ const Sales = () => {
                 ref={mobileScannerRef}
                 onScan={handleBarcodeScan}
                 products={allProducts}
-                onProductSelect={addToCart}
+                onProductSelect={(product) => {
+                  if (product.has_variants) {
+                    setSelectedPosProduct(product);
+                    setPosVariantModalOpen(true);
+                  } else {
+                    addToCart(product);
+                  }
+                }}
               />
               <CartItems
                 items={cart}
@@ -896,6 +961,17 @@ const Sales = () => {
         onSelectUser={handleSelectUser}
         isProcessing={createHeldCart.isPending}
         salesOnly={true}
+      />
+
+      {/* POS Quick Variant Selector Modal */}
+      <PosVariantSelectorModal
+        product={selectedPosProduct}
+        isOpen={posVariantModalOpen}
+        onClose={() => {
+          setPosVariantModalOpen(false);
+          setSelectedPosProduct(null);
+        }}
+        onSelectVariant={(p, v) => addToCart(p, v)}
       />
     </>
   );

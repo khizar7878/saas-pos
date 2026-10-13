@@ -193,13 +193,24 @@ export const useCreateSale = () => {
 
       if (sale.payment_method !== 'credit') {
         try {
-          // Fetch Store Settings
-          const { data: settings } = await supabase
-            .from('store_settings')
-            .select('fbr_integration_enabled, fbr_pos_id, fbr_api_url')
-            .single();
+          // Fetch Store Settings & Store Module Licensing
+          const [settingsRes, storeRes] = await Promise.all([
+            supabase
+              .from('store_settings')
+              .select('fbr_integration_enabled, fbr_pos_id, fbr_api_url')
+              .single(),
+            supabase
+              .from('stores')
+              .select('enabled_modules')
+              .single()
+          ]);
 
-          if (settings?.fbr_integration_enabled) {
+          const settings = settingsRes.data;
+          const store = storeRes.data;
+          const isFbrLicensed = store?.enabled_modules?.fbr_integration !== false;
+
+          // Only engage FBR if store is licensed AND operational toggle is active
+          if (isFbrLicensed && settings?.fbr_integration_enabled) {
             const payload = await buildFBRInvoicePayload({
               cart: items.map(item => ({
                 product_id: item.product_id,
@@ -405,15 +416,23 @@ export const useCompleteCreditSale = () => {
       let fbrQrCode = null;
 
       try {
-        // Fetch Settings explicitly to ensure we have latest
-        const { data: settings, error: settingsError } = await supabase
-          .from('store_settings')
-          .select('fbr_integration_enabled, fbr_pos_id, fbr_api_url')
-          .single();
+        // Fetch Settings & Store Licensing explicitly
+        const [settingsRes, storeRes] = await Promise.all([
+          supabase
+            .from('store_settings')
+            .select('fbr_integration_enabled, fbr_pos_id, fbr_api_url')
+            .single(),
+          supabase
+            .from('stores')
+            .select('enabled_modules')
+            .single()
+        ]);
 
-        console.log("FBR Settings loaded:", settings, "Error:", settingsError);
+        const settings = settingsRes.data;
+        const store = storeRes.data;
+        const isFbrLicensed = store?.enabled_modules?.fbr_integration !== false;
 
-        if (settings?.fbr_integration_enabled) {
+        if (isFbrLicensed && settings?.fbr_integration_enabled) {
           const items = rpcResult.items || [];
 
           // Sanitize items: filter items with remaining quantity > 0 and calculate net values
